@@ -183,7 +183,12 @@ struct Sidebar: View {
             } else {
                 KeyCap(label: "·")
             }
-            SwatchPicker(hex: level.colorHex) { editor.setLevelColor(level.id, hex: $0) }
+            SwatchPicker(
+                hex: level.colorHex,
+                used: editor.activeFactor?.levels
+                    .filter { $0.id != level.id }
+                    .map(\.colorHex) ?? []
+            ) { editor.setLevelColor(level.id, hex: $0) }
             EditableName(
                 text: level.name,
                 placeholder: "Name",

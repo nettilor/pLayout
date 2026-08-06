@@ -146,13 +146,28 @@ struct RowClickTracker {
 }
 
 /// Colour swatch that opens the shared palette, with a system picker for anything else.
+///
+/// The grid reads in two directions on purpose: **across** a row to tell two conditions
+/// apart, **down** a column for the same hue lighter or darker. That is the whole reason
+/// it is laid out by hand rather than as a `LazyVGrid` — the column *is* the meaning.
 struct SwatchPicker: View {
     let hex: String
+    /// What the other conditions of this factor are already using, so a duplicate shows
+    /// up before it is picked rather than after. Distinctness is a property of the set,
+    /// and this is the only place the set is visible.
+    var used: [String] = []
     let onPick: (String) -> Void
 
     @State private var showing = false
+    @State private var family: Palette.Family = .standard
 
-    private let columns = Array(repeating: GridItem(.fixed(20), spacing: 6), count: 5)
+    private let shadeCount = 5
+    private let swatch: CGFloat = 22
+    private let gap: CGFloat = 5
+
+    private var gridWidth: CGFloat {
+        swatch * 8 + gap * 7
+    }
 
     var body: some View {
         Button {
@@ -164,43 +179,89 @@ struct SwatchPicker: View {
                 .frame(width: 14, height: 14)
         }
         .buttonStyle(.plain)
-        .popover(isPresented: $showing, arrowEdge: .bottom) {
-            VStack(alignment: .leading, spacing: 10) {
-                LazyVGrid(columns: columns, spacing: 6) {
-                    ForEach(Palette.categorical, id: \.self) { candidate in
-                        Button {
-                            onPick(candidate)
-                            showing = false
-                        } label: {
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color(nsColor: NSColor(hex: candidate) ?? .gray))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .strokeBorder(
-                                            candidate.caseInsensitiveCompare(hex) == .orderedSame
-                                                ? Color.accentColor : Color.black.opacity(0.15),
-                                            lineWidth: candidate.caseInsensitiveCompare(hex) == .orderedSame ? 2 : 0.5
-                                        )
-                                )
-                                .frame(width: 20, height: 20)
+        .popover(isPresented: $showing, arrowEdge: .bottom) { palettePopover }
+    }
+
+    private var palettePopover: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker("", selection: $family) {
+                ForEach(Palette.Family.allCases) { option in
+                    Text(option.label).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .controlSize(.small)
+
+            HStack(alignment: .top, spacing: gap) {
+                ForEach(Array(family.hues.enumerated()), id: \.offset) { _, hue in
+                    VStack(spacing: gap) {
+                        ForEach(
+                            Array(Palette.shades(of: hue, count: shadeCount).enumerated()),
+                            id: \.offset
+                        ) { _, shade in
+                            swatchButton(shade)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
-                Divider()
-                ColorPicker(
-                    "Custom…",
-                    selection: Binding(
-                        get: { Color(nsColor: NSColor(hex: hex) ?? .gray) },
-                        set: { onPick(NSColor($0).hexString) }
-                    ),
-                    supportsOpacity: false
-                )
-                .font(.callout)
             }
-            .padding(12)
-            .frame(width: 168)
+            .frame(width: gridWidth)
+
+            Text(family.note)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(width: gridWidth, alignment: .topLeading)
+                // Two lines' worth of room whether or not this note needs it, so
+                // switching family does not shuffle everything below it.
+                .frame(minHeight: 26, alignment: .topLeading)
+
+            Divider()
+            ColorPicker(
+                "Custom…",
+                selection: Binding(
+                    get: { Color(nsColor: NSColor(hex: hex) ?? .gray) },
+                    set: { onPick(NSColor($0).hexString) }
+                ),
+                supportsOpacity: false
+            )
+            .font(.callout)
         }
+        .padding(12)
+    }
+
+    private func swatchButton(_ candidate: String) -> some View {
+        let colour = NSColor(hex: candidate) ?? .gray
+        let isCurrent = Palette.matches(candidate, hex)
+        let isTaken = used.contains { Palette.matches($0, candidate) }
+        return Button {
+            onPick(candidate)
+            showing = false
+        } label: {
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color(nsColor: colour))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .strokeBorder(
+                            isCurrent ? Color.accentColor : Color.black.opacity(0.15),
+                            lineWidth: isCurrent ? 2 : 0.5
+                        )
+                )
+                // Drawn in the swatch's own label colour so the dot is legible on a
+                // pale tint and on a near-black shade alike.
+                .overlay(alignment: .topTrailing) {
+                    if isTaken {
+                        Circle()
+                            .fill(Color(nsColor: colour.contrastingLabelColor))
+                            .frame(width: 5, height: 5)
+                            .padding(2.5)
+                    }
+                }
+                .frame(width: swatch, height: swatch)
+        }
+        .buttonStyle(.plain)
+        .help(isTaken ? "\(candidate) — already used by another condition" : candidate)
     }
 }
 

@@ -106,6 +106,28 @@ so deleting a template never affects a layout that used it.
 Zoom never goes below "whole plate in view" — that is the resting state, and pinching
 only ever moves in closer. The current level shows in the status bar; click it to fit.
 
+## Choosing colours
+
+Clicking a condition's swatch opens a grid that reads in two directions: **across** a
+row to tell two conditions apart, **down** a column for the same hue lighter or darker.
+The middle row is the colour itself, so a condition the app coloured for you shows up
+selected rather than as "custom", and the last column is always a neutral for the
+untreated arm.
+
+Three families sit above the grid. **Standard** is the set new conditions are given.
+**Colour-blind** is Okabe–Ito, which stays separable with red/green colour blindness —
+worth reaching for on anything headed into a figure. **Muted** is softer tints, for a
+plate crowded enough that full-strength colour is too loud.
+
+A colour another condition of the same factor already uses is marked with a dot, so a
+duplicate is visible before you pick it rather than after. Colours are only compared
+within a factor: two factors sharing a blue is harmless, since they never occupy the
+same line of a well.
+
+**Custom…** at the bottom opens the system colour picker for anything else, and the
+⋯ menu beside the condition list recolours every condition at once — as a spread of
+hues, or as a light-to-dark ramp when the factor is numeric.
+
 ## Excel round-trip
 
 `⌘C` puts the selection on the pasteboard as tab-separated text, which pastes
