@@ -412,15 +412,19 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         var secondarySize: CGFloat
         var gap: CGFloat
         /// Overview ranks no factor above another, so every line shares one size,
-        /// weight and colour. Everywhere else line 1 is the headline.
+        /// weight and colour. Everywhere else one line is the headline.
         var uniform: Bool = false
 
         var primaryHeight: CGFloat { primarySize * 1.18 }
         var secondaryHeight: CGFloat { secondarySize * 1.18 }
 
-        func stackHeight(lines: Int) -> CGFloat {
+        /// Exactly one line can be the headline, so the total does not depend on *which*
+        /// one it is — only on whether there is one at all. `primary: true` is the taller
+        /// case and therefore the one to measure the fit against.
+        func stackHeight(lines: Int, primary: Bool = true) -> CGFloat {
             guard lines > 0 else { return 0 }
-            return primaryHeight + CGFloat(lines - 1) * (secondaryHeight + gap)
+            return (primary ? primaryHeight : secondaryHeight)
+                + CGFloat(lines - 1) * (secondaryHeight + gap)
         }
     }
 
@@ -474,6 +478,16 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         Self.labelPlan(cell: cell, mode: mode, factorCount: factorCount)
     }
 
+    /// Which stacked line carries the headline tier — bigger and semibold. It follows
+    /// the factor being *painted*, not document order, so the well itself says what a
+    /// click would change. nil leaves every line equal: Overview ranks none of them,
+    /// and an active factor that overflowed to the colour stripe has no line to mark —
+    /// emphasising line 1 instead would claim the wrong factor was armed.
+    static func primarySlot(lines: [Factor], activeFactorID: UUID?, uniform: Bool) -> Int? {
+        guard !uniform, let activeFactorID else { return nil }
+        return lines.firstIndex { $0.id == activeFactorID }
+    }
+
     /// One text line per factor, in document order, each headed by a colour rail.
     /// Slots for unassigned factors are reserved rather than collapsed, so line 2
     /// always means the same factor in every well.
@@ -483,6 +497,10 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     ) {
         let lineCount = min(plan.lineCount, factors.count)
         guard lineCount >= 1 else { return }
+        let primarySlot = Self.primarySlot(
+            lines: Array(factors.prefix(lineCount)),
+            activeFactorID: activeFactorID, uniform: plan.uniform
+        )
 
         // Overview puts the text on a neutral tile with nothing behind it to fight
         // with, and reading it is the whole job there, so it gets full strength.
@@ -496,11 +514,12 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         let textGap = max(2, railWidth * 0.75)
         // Centre the stack in whatever the stripe left behind.
         let usable = bodyRect.height - reservedBottom
-        var y = bodyRect.minY + (usable - plan.stackHeight(lines: lineCount)) / 2
+        let stackHeight = plan.stackHeight(lines: lineCount, primary: primarySlot != nil)
+        var y = bodyRect.minY + (usable - stackHeight) / 2
 
         for slot in 0..<lineCount {
             let factor = factors[slot]
-            let isPrimary = slot == 0 && !plan.uniform
+            let isPrimary = slot == primarySlot
             let height = isPrimary ? plan.primaryHeight : plan.secondaryHeight
             // Only the active factor is being painted, so only it previews a drag.
             let level = factor.id == activeFactorID
@@ -515,12 +534,18 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
             if let level, let colour = NSColor(hex: level.colorHex) {
                 colour.setFill()
                 NSBezierPath(roundedRect: railRect, xRadius: radius, yRadius: radius).fill()
-                // A rail whose colour is close to the fill would otherwise disappear.
-                textColor.withAlphaComponent(0.45).setStroke()
+                // A rail whose colour is close to the fill would otherwise disappear —
+                // and the headline's rail always *is* the fill, since both come from
+                // the factor being painted, so the one line the eye is sent to gets the
+                // strongest wall of the lot. Inset by half the width so a heavier stroke
+                // stays inside the capsule instead of swelling it.
+                let wall: CGFloat = isPrimary ? 1 : 0.75
+                textColor.withAlphaComponent(isPrimary ? 0.95 : 0.7).setStroke()
                 let outline = NSBezierPath(
-                    roundedRect: railRect.insetBy(dx: 0.25, dy: 0.25), xRadius: radius, yRadius: radius
+                    roundedRect: railRect.insetBy(dx: wall / 2, dy: wall / 2),
+                    xRadius: radius, yRadius: radius
                 )
-                outline.lineWidth = 0.5
+                outline.lineWidth = wall
                 outline.stroke()
 
                 let textRect = CGRect(

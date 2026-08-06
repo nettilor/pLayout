@@ -272,6 +272,66 @@ final class LabelPlanTests: XCTestCase {
         }
     }
 
+    // MARK: - Which line is the headline
+
+    private func lines(_ count: Int) -> [Factor] {
+        (0..<count).map { Factor(name: "F\($0)") }
+    }
+
+    /// The bigger, bolder line has to be the factor being painted — it is the only
+    /// thing in the well that says what a click would change. It used to be pinned to
+    /// document order, which claimed factor 1 was armed no matter what was.
+    func testTheHeadlineLineFollowsTheActiveFactor() {
+        let factors = lines(4)
+        for (slot, factor) in factors.enumerated() {
+            XCTAssertEqual(
+                PlateCanvasView.primarySlot(
+                    lines: factors, activeFactorID: factor.id, uniform: false
+                ),
+                slot
+            )
+        }
+    }
+
+    /// An active factor that did not fit as a line has no line to mark, and promoting
+    /// some other one would point at the wrong factor.
+    func testNoLineIsPromotedWhenTheActiveFactorDidNotFit() {
+        let factors = lines(4)
+        let overflowed = Factor(name: "Late")
+        XCTAssertNil(
+            PlateCanvasView.primarySlot(
+                lines: factors, activeFactorID: overflowed.id, uniform: false
+            )
+        )
+        XCTAssertNil(
+            PlateCanvasView.primarySlot(lines: factors, activeFactorID: nil, uniform: false)
+        )
+    }
+
+    func testOverviewPromotesNoLineAtAll() {
+        let factors = lines(3)
+        XCTAssertNil(
+            PlateCanvasView.primarySlot(
+                lines: factors, activeFactorID: factors[1].id, uniform: true
+            )
+        )
+    }
+
+    /// Only one line is ever the headline, so moving it changes nothing about the
+    /// height — and the headline-less case must be the shorter of the two, or a stack
+    /// measured with one could overflow the well when drawn without.
+    func testAHeadlineLessStackIsNeverTaller() {
+        for factors in 2...6 {
+            for cell in stride(from: CGFloat(20), through: 96, by: 2) {
+                let p = plan(cell: cell, factors: factors)
+                XCTAssertLessThanOrEqual(
+                    p.stackHeight(lines: factors, primary: false),
+                    p.stackHeight(lines: factors, primary: true)
+                )
+            }
+        }
+    }
+
     /// Regression: the plan used to subtract room for a stripe that render() might not
     /// draw, so a whole label line was lost for nothing.
     func testPlanDoesNotPayForAStripeItCannotSee() {
