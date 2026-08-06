@@ -45,19 +45,22 @@ struct CommitTextField: View {
     }
 }
 
-/// A name that a single click selects and a double click renames.
+/// A row's name: plain text normally, an editable field while `isEditing`.
 ///
-/// Selecting a factor or a condition is by far the more common action, so it gets the
-/// single click and the whole row's worth of target area; renaming is deliberate, so it
-/// asks for a double click. Escape abandons an edit, Return and clicking away keep it.
-struct SelectableNameField: View {
+/// It carries **no gestures at all**. Every attempt to put one here — exclusive or
+/// simultaneous, single or double — either stalled the row's click for the
+/// double-click interval or swallowed the press that `List` needs to start a reorder
+/// drag. The owning row keeps its single tap gesture and decides what a click means,
+/// which is the arrangement reordering already worked with.
+///
+/// Escape abandons an edit; Return or clicking away keeps it.
+struct EditableName: View {
     let text: String
     var placeholder: String = ""
     var font: Font = .body
-    let onSelect: () -> Void
+    @Binding var isEditing: Bool
     let onCommit: (String) -> Void
 
-    @State private var isEditing = false
     @State private var draft = ""
     @FocusState private var focused: Bool
 
@@ -73,35 +76,21 @@ struct SelectableNameField: View {
                     .onChange(of: focused) { _, nowFocused in
                         if !nowFocused { commit() }
                     }
-                    // Closing a popover or collapsing a section tears the field down
-                    // without ever moving focus, so catch that too.
+                    // Switching rows tears the field down without moving focus.
                     .onDisappear(perform: commit)
+                    .onAppear {
+                        draft = text
+                        DispatchQueue.main.async { focused = true }
+                    }
             } else {
                 Text(text)
                     .font(font)
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .onTapGesture(count: 2, perform: beginEditing)
-                    // Simultaneous, not chained. Two ordinary tap gestures become
-                    // exclusive, so the single click cannot resolve until the
-                    // double-click interval has elapsed — which is felt as lag on the
-                    // action you take most. Recognising them in parallel lets the
-                    // selection land on mouse-up; a double click simply selects first
-                    // and then opens the editor, which is harmless.
-                    .simultaneousGesture(TapGesture().onEnded(onSelect))
                     .help("Double-click to rename")
             }
         }
-    }
-
-    private func beginEditing() {
-        draft = text
-        isEditing = true
-        // Focus after the field exists, which also lets it win over any row-level
-        // click handling that ran on the way in.
-        DispatchQueue.main.async { focused = true }
     }
 
     private func commit() {
@@ -116,6 +105,43 @@ struct SelectableNameField: View {
     private func cancel() {
         isEditing = false
         focused = false
+    }
+}
+
+/// Reordering rows by dragging them onto one another.
+///
+/// `List`'s own `.onMove` is wired up correctly here — the outline view registers the
+/// reorder drop type and its data source hands back a pasteboard writer for exactly the
+/// factor and condition rows — but the rows also carry a tap gesture for selection, and
+/// SwiftUI's gesture tracking consumes the mouse movement before AppKit can turn it into
+/// a drag session. Rather than give up the click behaviour, the drag is driven explicitly.
+enum RowReorder {
+    /// `move(fromOffsets:toOffset:)` inserts *before* `toOffset` using pre-move indices,
+    /// so dropping onto a row further down needs one added to land after it.
+    static func offset(movingFrom from: Int, onto to: Int) -> Int {
+        to > from ? to + 1 : to
+    }
+}
+
+/// Turns a stream of row clicks into "select" or "rename" by timing them, rather than
+/// by adding a second gesture recogniser that would compete for the pointer.
+@MainActor
+struct RowClickTracker {
+    private var lastID: UUID?
+    private var lastAt: TimeInterval = 0
+
+    /// True when this click is the second of a double click on the same row.
+    /// Consumes the pair, so a third click starts counting again. The clock and the
+    /// interval are injectable so the rule can be tested without waiting on a timer.
+    mutating func isDoubleClick(
+        on id: UUID,
+        now: TimeInterval = ProcessInfo.processInfo.systemUptime,
+        interval: TimeInterval = NSEvent.doubleClickInterval
+    ) -> Bool {
+        let isDouble = id == lastID && now - lastAt <= interval
+        lastID = isDouble ? nil : id
+        lastAt = isDouble ? 0 : now
+        return isDouble
     }
 }
 

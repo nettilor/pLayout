@@ -14,7 +14,7 @@ define.
 ```sh
 ./build.sh
 open "build/pLayout.app"
-swift test          # 138 tests
+swift test          # 148 tests
 ```
 
 Swift Package Manager, no third-party dependencies. Requires macOS 14 or later.
@@ -194,6 +194,11 @@ Two invariants are worth knowing before changing the drawing code:
   magnification, so if the document view tracked the clip view's *bounds* it would
   re-fit the plate smaller and cancel the zoom exactly out. `PlateScrollView.tile()`
   pins it to `contentView.frame`; `ZoomTests` guards it.
+- **Sidebar rows drive their own clicks and drags.** A row's tap gesture is what
+  decides between select and rename (timed, not a double-tap recogniser), and that
+  same gesture consumes the mouse movement that `List.onMove` needs — so reordering
+  is an explicit `onDrag`/`onDrop` pair instead. `.onMove` was verified to be wired
+  up correctly and still not to work, so do not "simplify" it back.
 - **No toolbar item changes structure, enabled state, or width.** Any of the three
   makes AppKit re-tile the bar, which visibly splits the groups apart while the app
   is being used. Buttons stay enabled and explain themselves in their tooltip, and
