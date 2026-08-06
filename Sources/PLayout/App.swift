@@ -59,6 +59,19 @@ struct PlateCommands: Commands {
             Button("Fit Plate to Window") { editor?.zoomToFit() }
                 .keyboardShortcut("0", modifiers: .command)
             Divider()
+            // Lives with zoom rather than with the editing commands: like zooming out,
+            // it changes how much of the design you can take in at once.
+            Button {
+                editor?.toggleOverview()
+            } label: {
+                if editor?.isOverview == true {
+                    Label("Overview", systemImage: "checkmark")
+                } else {
+                    Text("Overview")
+                }
+            }
+            .keyboardShortcut("o", modifiers: [.command, .shift])
+            Divider()
         }
 
         CommandMenu("Plate") {
@@ -79,7 +92,7 @@ struct PlateCommands: Commands {
 
             Divider()
 
-            Button("Series Fill…") { editor?.showingSeriesSheet = true }
+            Button("Series Fill…") { editor?.openSeriesSheet() }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
             Button("Randomise Selection") { editor?.randomizeSelection() }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
@@ -124,7 +137,15 @@ struct PlateCommands: Commands {
 
             Menu("Text in Wells") {
                 ForEach(WellLabelMode.allCases) { mode in
-                    Button(mode.label) { editor?.setWellLabelMode(mode) }
+                    Button {
+                        editor?.setWellLabelMode(mode)
+                    } label: {
+                        if mode == editor?.layout.wellLabelMode {
+                            Label(mode.label, systemImage: "checkmark")
+                        } else {
+                            Text(mode.label)
+                        }
+                    }
                 }
             }
         }

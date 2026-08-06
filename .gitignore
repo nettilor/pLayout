@@ -30,6 +30,10 @@ Icon?
 # Local working notes for future sessions — deliberately not published
 HANDOFF.md
 
+# The screenshot / click / fixture harness HANDOFF.md describes. Local tooling for
+# verifying UI work on this machine, not part of the app.
+Tools/verify/
+
 # Scratch output the tests can be pointed at
 *.plate
 *.xlsx

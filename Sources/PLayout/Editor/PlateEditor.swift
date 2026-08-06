@@ -31,12 +31,19 @@ final class PlateEditor: ObservableObject {
 
     private var cancellables = Set<AnyCancellable>()
     private var messageResetWork: DispatchWorkItem?
+    /// What Overview stepped away from, so leaving it puts the brush back where it
+    /// was rather than dumping the user on factor 1 in whatever mode.
+    private var overviewReturn: (mode: WellLabelMode, factorID: UUID?)?
 
     init(document: PlateDocument) {
         self.document = document
         activePlateID = document.layout.plates.first?.id
-        activeFactorID = document.layout.factors.first?.id
-        armedLevelID = document.layout.factors.first?.levels.first?.id
+        // A document saved in Overview reopens in it, and Overview means no factor is
+        // being painted — `reconcileTargets` only sees *changes*, so it cannot do this.
+        if !document.layout.wellLabelMode.isOverview {
+            activeFactorID = document.layout.factors.first?.id
+            armedLevelID = document.layout.factors.first?.levels.first?.id
+        }
         document.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
@@ -72,6 +79,10 @@ final class PlateEditor: ObservableObject {
     var format: PlateFormat { plate?.format ?? .well96 }
     var activeFactor: Factor? { layout.factor(id: activeFactorID) }
     var armedLevel: Level? { activeFactor?.level(id: armedLevelID) }
+
+    /// Reading the plate rather than editing it: no factor is active, so a click
+    /// selects wells without painting them.
+    var isOverview: Bool { layout.wellLabelMode.isOverview }
 
     var secondaryFactors: [Factor] {
         layout.factors.filter { $0.id != activeFactorID }
@@ -137,6 +148,7 @@ final class PlateEditor: ObservableObject {
     }
 
     func paintSelection() {
+        guard !isOverview else { return flashOverviewIsReadOnly() }
         guard armedLevelID != nil else {
             flash("Pick a condition first — press 1–9 or click one in the sidebar.")
             return
@@ -148,7 +160,15 @@ final class PlateEditor: ObservableObject {
         paint(wells: selectedWells, level: armedLevelID, actionName: "Fill Selection")
     }
 
+    /// Every edit needs a factor to write into, and Overview deliberately has none.
+    /// Said out loud rather than silently ignored — a key that does nothing reads as
+    /// a bug, not as a mode.
+    private func flashOverviewIsReadOnly() {
+        flash("Overview is read-only — click a factor to start painting again.")
+    }
+
     func clearSelection() {
+        guard !isOverview else { return flashOverviewIsReadOnly() }
         paint(wells: selectedWells, level: nil, actionName: "Clear Selection")
     }
 
@@ -218,13 +238,19 @@ final class PlateEditor: ObservableObject {
     func disarmLevel() { armedLevelID = nil }
 
     func setActiveFactor(_ id: UUID) {
+        leaveOverview()
         activeFactorID = id
         armedLevelID = layout.factor(id: id)?.levels.first?.id
     }
 
     func cycleFactor(by delta: Int) {
         guard !layout.factors.isEmpty else { return }
-        let current = layout.factorIndex(id: activeFactorID) ?? 0
+        // Overview has no active factor, so Tab picks one up again from the end it is
+        // heading towards rather than skipping the factor it should have landed on.
+        guard let current = layout.factorIndex(id: activeFactorID) else {
+            setActiveFactor(layout.factors[delta < 0 ? layout.factors.count - 1 : 0].id)
+            return
+        }
         let count = layout.factors.count
         setActiveFactor(layout.factors[((current + delta) % count + count) % count].id)
     }
@@ -432,8 +458,43 @@ final class PlateEditor: ObservableObject {
     }
 
     /// Saved with the document so a layout reopens — and exports — the way it was designed.
+    ///
+    /// Overview also drops the active factor, which `reconcileTargets` enforces as the
+    /// mode's invariant. What it was before is captured *here*, before the edit, since
+    /// reconciling the new layout is what clears it.
     func setWellLabelMode(_ mode: WellLabelMode) {
+        let entering = mode.isOverview && !isOverview
+        let resume = entering ? (mode: layout.wellLabelMode, factorID: activeFactorID) : overviewReturn
+
         edit("Well Labels") { layout in layout.wellLabelMode = mode }
+
+        if mode.isOverview {
+            overviewReturn = resume
+        } else {
+            // Leaving by picking another text mode keeps the factor you were painting.
+            if let id = resume?.factorID, layout.factors.contains(where: { $0.id == id }) {
+                setActiveFactor(id)
+            }
+            overviewReturn = nil
+        }
+    }
+
+    /// Steps into Overview, or back out to whatever it was showing before. Bound to a
+    /// single shortcut because "stand back and read the whole plate" is a glance, not
+    /// a mode you navigate into and out of by hand.
+    func toggleOverview() {
+        setWellLabelMode(isOverview ? (overviewReturn?.mode ?? .allFactors) : .overview)
+    }
+
+    /// Overview is a look, not a destination: touching a factor puts you back to
+    /// painting, in the mode you were in when you stepped away.
+    private func leaveOverview() {
+        guard isOverview else { return }
+        let resume = overviewReturn?.mode ?? .allFactors
+        edit("Well Labels") { layout in
+            layout.wellLabelMode = resume.isOverview ? .allFactors : resume
+        }
+        overviewReturn = nil
     }
 
     // MARK: - Saved states
@@ -541,7 +602,12 @@ final class PlateEditor: ObservableObject {
         if activePlateID == nil || !layout.plates.contains(where: { $0.id == activePlateID }) {
             activePlateID = layout.plates.first?.id
         }
-        if activeFactorID == nil || !layout.factors.contains(where: { $0.id == activeFactorID }) {
+        // Overview means "nothing is being painted", and the mode lives in the document,
+        // so undo and redo can move in and out of it too. Enforcing the invariant here
+        // rather than at the call sites is what keeps those paths honest.
+        if layout.wellLabelMode.isOverview {
+            activeFactorID = nil
+        } else if activeFactorID == nil || !layout.factors.contains(where: { $0.id == activeFactorID }) {
             activeFactorID = layout.factors.first?.id
         }
         let factor = layout.factors.first { $0.id == activeFactorID }
@@ -582,7 +648,11 @@ final class PlateEditor: ObservableObject {
 
     /// Copies the selection as tab-separated text — pastes straight into Excel.
     func copySelection(includeHeaders: Bool = false) {
-        guard let plate, let factor = activeFactor, let selection else { return }
+        guard let plate, let selection else { return }
+        guard let factor = activeFactor else {
+            flash("No factor selected — click one in the sidebar to copy its values.")
+            return
+        }
         let range = selection.clamped(to: plate.format)
         var grid: [[String]] = []
 
@@ -615,6 +685,7 @@ final class PlateEditor: ObservableObject {
     /// Pastes a block of text values, creating any conditions it has not seen before.
     func pasteFromPasteboard() {
         guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else { return }
+        guard !isOverview else { return flashOverviewIsReadOnly() }
         guard let factorID = activeFactorID else { return }
 
         var grid = TSV.parse(text)
@@ -697,6 +768,14 @@ final class PlateEditor: ObservableObject {
         var lastIsZero: Bool = false
     }
 
+    /// Guarded here rather than by disabling the toolbar button: a disabled item
+    /// re-tiles the whole toolbar, and a sheet that can only refuse on Apply is a
+    /// worse answer than saying so up front.
+    func openSeriesSheet() {
+        guard !isOverview else { return flashOverviewIsReadOnly() }
+        showingSeriesSheet = true
+    }
+
     /// The formatted values a series would write, used for the live preview too.
     func seriesValues(_ spec: SeriesSpec) -> [String] {
         guard let plate, let selection else { return [] }
@@ -720,6 +799,7 @@ final class PlateEditor: ObservableObject {
 
     /// Writes a dose series across the selection — the common case this app exists for.
     func applySeries(_ spec: SeriesSpec) {
+        guard !isOverview else { return flashOverviewIsReadOnly() }
         guard let factorID = activeFactorID, let plate, let selection else { return }
         let range = selection.clamped(to: plate.format)
         let values = seriesValues(spec)
@@ -766,6 +846,7 @@ final class PlateEditor: ObservableObject {
     /// Shuffles the existing values inside the selection — randomised placement
     /// to guard against plate position effects.
     func randomizeSelection() {
+        guard !isOverview else { return flashOverviewIsReadOnly() }
         guard let factorID = activeFactorID, let plate else { return }
         let wells = selectedWells
         guard wells.count > 1 else { return }

@@ -119,9 +119,13 @@ struct ContentView: View {
                         .font(.system(size: 11, weight: .medium))
                 }
             } else {
-                Text("No condition armed — press 1–9 to pick one")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                Text(
+                    editor.isOverview
+                        ? "Overview — click a factor to start painting"
+                        : "No condition armed — press 1–9 to pick one"
+                )
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
             }
 
             Divider().frame(height: 12)
@@ -249,7 +253,7 @@ struct ContentView: View {
 
     private var seriesFillButton: some View {
         Button {
-            editor.showingSeriesSheet = true
+            editor.openSeriesSheet()
         } label: {
             Label("Series Fill", systemImage: "chart.line.downtrend.xyaxis")
         }
@@ -350,6 +354,7 @@ struct ShortcutsCard: View {
         Row(key: "⎋", detail: "Disarm — select without painting"),
         Row(key: "arrows", detail: "Move · ⇧arrows extend selection"),
         Row(key: "⌘1 … ⌘9", detail: "Switch factor"),
+        Row(key: "⇧⌘O", detail: "Overview — every factor at once, nothing armed"),
         Row(key: "click away", detail: "Deselect — click off the plate"),
         Row(key: "pinch", detail: "Zoom in  ·  ⌘0 fits the plate again"),
         Row(key: "⌘C  /  ⌘V", detail: "Copy / paste as Excel cells"),

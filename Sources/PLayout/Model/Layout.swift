@@ -66,11 +66,13 @@ struct Factor: Identifiable, Codable, Hashable {
 // MARK: - Display
 
 /// How much text each well carries. `.allFactors` is what makes a multi-factor
-/// layout readable without hovering every well.
+/// layout readable without hovering every well; `.overview` is that same stack with
+/// nothing being painted, so the plate can be read rather than edited.
 enum WellLabelMode: String, Codable, CaseIterable, Identifiable {
     case none
     case activeFactor
     case allFactors
+    case overview
 
     var id: String { rawValue }
 
@@ -79,10 +81,29 @@ enum WellLabelMode: String, Codable, CaseIterable, Identifiable {
         case .none: return "None"
         case .activeFactor: return "Active factor"
         case .allFactors: return "All factors"
+        case .overview: return "Overview"
+        }
+    }
+
+    /// What the segmented picker shows: four full labels overflow a sidebar-width
+    /// control, and "Text in wells" above it already supplies the missing noun.
+    var shortLabel: String {
+        switch self {
+        case .none: return "None"
+        case .activeFactor: return "Active"
+        case .allFactors: return "All"
+        case .overview: return "Overview"
         }
     }
 
     var showsText: Bool { self != .none }
+
+    /// The modes that give every factor its own line inside the well.
+    var stacksEveryFactor: Bool { self == .allFactors || self == .overview }
+
+    /// Overview reads the plate instead of editing it: no factor is active, so
+    /// clicking selects without painting and every well gets the same neutral tile.
+    var isOverview: Bool { self == .overview }
 }
 
 // MARK: - Saved states

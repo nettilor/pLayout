@@ -209,9 +209,12 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         guard let editor, let plate = editor.plate else { return }
         let geo = geometry
         let format = plate.format
-        let factor = editor.activeFactor
+        let mode = editor.layout.wellLabelMode
+        // Overview has no factor being painted, so no factor colours the well. Read
+        // from the mode rather than from `activeFactor` alone: that keeps the drawing
+        // correct on its own terms, including when a test sets the mode directly.
+        let factor = mode.isOverview ? nil : editor.activeFactor
         let selection = editor.selection?.clamped(to: format)
-        let secondary = editor.showSecondaryFactors ? editor.secondaryFactors : []
 
         (exportMode ? NSColor.white : NSColor.windowBackgroundColor).setFill()
         bounds.fill()
@@ -221,11 +224,21 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
 
         drawHeaders(geo: geo, selection: selection)
 
-        let mode = editor.layout.wellLabelMode
         let plan = labelPlan(cell: geo.cell, mode: mode, factorCount: editor.layout.factors.count)
         // Factors shown as text lines; anything left over may fall back to the colour stripe.
         let stacked = plan.lineCount >= 2 ? Array(editor.layout.factors.prefix(plan.lineCount)) : []
         let overflow = stacked.isEmpty ? [] : Array(editor.layout.factors.dropFirst(plan.lineCount))
+
+        let showSingleText = mode.showsText && stacked.isEmpty && geo.cell >= 17
+        // A well too small to stack still has to say something in Overview, so factor 1
+        // takes the well's text and the rest drop to the stripe — the same shape the
+        // other modes take, only without a factor having been chosen.
+        let soloFactor = mode.isOverview && showSingleText ? editor.layout.factors.first : nil
+
+        // Overview always shows the other factors — that is the whole mode — and the
+        // toggle that would otherwise govern it is hidden while Overview is on.
+        var secondary = (editor.showSecondaryFactors || mode.isOverview) ? editor.secondaryFactors : []
+        if let soloFactor { secondary.removeAll { $0.id == soloFactor.id } }
 
         // The stack is sized against the whole body, so the stripe only gets what the
         // stack did not need. That keeps the two from fighting over the same space.
@@ -235,7 +248,10 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         var stripeHeight: CGFloat = 0
         if !stripeFactors.isEmpty {
             if stacked.isEmpty {
-                stripeHeight = geo.cell >= 22 ? max(3, geo.cell * 0.15) : 0
+                // Overview has no active-factor colour competing for the well, and a
+                // plate too dense to stack would otherwise be a blank grid, so the
+                // stripe is let into far smaller cells there.
+                stripeHeight = geo.cell >= (mode.isOverview ? 10 : 22) ? max(3, geo.cell * 0.15) : 0
             } else {
                 let leftover = geo.cell - Self.bodyInset(cell: geo.cell) * 2
                     - plan.stackHeight(lines: stacked.count)
@@ -245,9 +261,11 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         }
         let hiddenFactorCount = stacked.isEmpty ? 0 : overflow.count - stripeFactors.count
 
-        let showSingleText = mode.showsText && stacked.isEmpty && geo.cell >= 17
         let wellFontSize = max(7, min(geo.cell * 0.30, 13))
         let emptyFill = NSColor.quaternaryLabelColor.withAlphaComponent(exportMode ? 0.10 : 0.13)
+        // Every Overview well gets this same tile, so it is pitched a little stronger
+        // than the empty-well fill: it has to read as a surface, not as an absence.
+        let neutralFill = NSColor.quaternaryLabelColor.withAlphaComponent(exportMode ? 0.14 : 0.18)
         let hairline = NSColor.separatorColor.withAlphaComponent(0.6)
         let drawHairlines = geo.cell >= 4
 
@@ -288,8 +306,14 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
                         )
                     }
                 } else {
-                    emptyFill.setFill()
+                    (mode.isOverview ? neutralFill : emptyFill).setFill()
                     shape.fill()
+                    if let soloFactor,
+                       let name = soloFactor
+                        .level(id: plate.levelID(factor: soloFactor.id, well: index))?.name
+                    {
+                        drawFitted(name, in: bodyRect, maxFontSize: wellFontSize, color: .labelColor)
+                    }
                 }
 
                 if !stacked.isEmpty {
@@ -387,6 +411,9 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         var primarySize: CGFloat
         var secondarySize: CGFloat
         var gap: CGFloat
+        /// Overview ranks no factor above another, so every line shares one size,
+        /// weight and colour. Everywhere else line 1 is the headline.
+        var uniform: Bool = false
 
         var primaryHeight: CGFloat { primarySize * 1.18 }
         var secondaryHeight: CGFloat { secondarySize * 1.18 }
@@ -407,7 +434,16 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         let gap = max(0.5, secondary * 0.16)
         var plan = LabelPlan(lineCount: 0, primarySize: primary, secondarySize: secondary, gap: gap)
 
-        guard mode == .allFactors, factorCount >= 2 else { return plan }
+        // Overview ranks no factor above another, so it drops the headline tier and
+        // measures the stack at the supporting size. Measuring at the *smaller* size is
+        // what guarantees Overview never fits fewer factors than the graded stack —
+        // being the worse overview of the two would defeat the mode.
+        if mode.isOverview {
+            plan.primarySize = secondary
+            plan.uniform = true
+        }
+
+        guard mode.stacksEveryFactor, factorCount >= 2 else { return plan }
 
         let available = cell - bodyInset(cell: cell) * 2
         guard plan.primaryHeight <= available else { return plan }
@@ -416,6 +452,21 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
 
         plan.lineCount = min(lines, factorCount)
         if plan.lineCount < 2 { plan.lineCount = 0 }
+
+        // With the line count settled, grow the uniform type back into the room those
+        // lines were measured into — capped at the headline size, so Overview is never
+        // louder than the mode it stands in for. Room for the overflow stripe is held
+        // back first, or the factors that missed a line would vanish outright instead
+        // of dropping to a colour band. The `secondary` floor is what keeps this from
+        // ever costing the line count it was just given.
+        if plan.uniform, plan.lineCount >= 2 {
+            let lines = CGFloat(plan.lineCount)
+            let reserved: CGFloat = factorCount > plan.lineCount ? max(3, cell * 0.15) + 2 : 0
+            let fitted = (available - reserved - (lines - 1) * gap) / (lines * 1.18)
+            let size = max(secondary, min(primary, fitted))
+            plan.primarySize = size
+            plan.secondarySize = size
+        }
         return plan
     }
 
@@ -433,17 +484,23 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         let lineCount = min(plan.lineCount, factors.count)
         guard lineCount >= 1 else { return }
 
-        let textColor = onColour?.contrastingLabelColor ?? NSColor.labelColor.withAlphaComponent(0.75)
-        let railWidth = max(2, min(3, bodyRect.width * 0.05))
+        // Overview puts the text on a neutral tile with nothing behind it to fight
+        // with, and reading it is the whole job there, so it gets full strength.
+        let textColor = onColour?.contrastingLabelColor
+            ?? NSColor.labelColor.withAlphaComponent(plan.uniform ? 1 : 0.75)
+        // Deliberately wider than a hairline: the rail is the only colour a stacked
+        // well carries, and at 3pt it read as a tick mark rather than as the swatch
+        // that ties the well back to the condition list.
+        let railWidth = max(2.5, min(5.5, bodyRect.width * 0.09))
         let inset = max(2.5, bodyRect.width * 0.055)
-        let textGap = max(2, railWidth * 0.9)
+        let textGap = max(2, railWidth * 0.75)
         // Centre the stack in whatever the stripe left behind.
         let usable = bodyRect.height - reservedBottom
         var y = bodyRect.minY + (usable - plan.stackHeight(lines: lineCount)) / 2
 
         for slot in 0..<lineCount {
             let factor = factors[slot]
-            let isPrimary = slot == 0
+            let isPrimary = slot == 0 && !plan.uniform
             let height = isPrimary ? plan.primaryHeight : plan.secondaryHeight
             // Only the active factor is being painted, so only it previews a drag.
             let level = factor.id == activeFactorID
@@ -474,7 +531,8 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
                 drawFitted(
                     level.name, in: textRect, maxFontSize: size, minFontSize: size * 0.85,
                     weight: isPrimary ? .semibold : .regular, alignment: .left,
-                    color: isPrimary ? textColor : textColor.withAlphaComponent(0.86)
+                    color: isPrimary || plan.uniform
+                        ? textColor : textColor.withAlphaComponent(0.86)
                 )
             } else {
                 textColor.withAlphaComponent(0.16).setFill()

@@ -147,6 +147,14 @@ struct Sidebar: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
+            } else if editor.isOverview {
+                // Overview's one cost is that there is nothing to paint with, so this
+                // says where the conditions went and how to get them back.
+                Text("No factor selected. Click a factor above to paint again.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         } header: {
             HStack {
@@ -161,6 +169,7 @@ struct Sidebar: View {
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
+                .disabled(editor.activeFactor == nil)
             }
         }
     }
@@ -270,15 +279,22 @@ struct Sidebar: View {
                     set: { editor.setWellLabelMode($0) }
                 )) {
                     ForEach(WellLabelMode.allCases) { mode in
-                        Text(mode.label).tag(mode)
+                        Text(mode.shortLabel).tag(mode)
                     }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                if editor.layout.wellLabelMode == .allFactors {
-                    Text(allFactorsHint)
+                // Four segments overflow a sidebar-width control at the regular size,
+                // and an overflowing segmented control clips rather than compressing.
+                .controlSize(.small)
+                if let hint = modeHint {
+                    Text(hint)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
+                        // Sidebar rows come with a one-line limit, which truncated this
+                        // to "One line per factor, in the order listed…" — both halves
+                        // of the sentence that mattered were the half being cut.
+                        .lineLimit(nil)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -286,9 +302,8 @@ struct Sidebar: View {
 
             Toggle("Round wells", isOn: $editor.roundWells)
                 .help("Ignored while stacked labels are showing — they need the full width of the well, so those are drawn as squares.")
-            // In All factors the stacked list already shows every factor, so this
-            // control would have nothing left to govern.
-            if editor.layout.wellLabelMode != .allFactors {
+            // Once every factor has its own line, this control has nothing left to govern.
+            if !editor.layout.wellLabelMode.stacksEveryFactor {
                 Toggle("Show other factors", isOn: $editor.showSecondaryFactors)
                     .disabled(editor.layout.factors.count < 2)
                     .help("Adds a colour strip along the bottom of each well for the factors you are not painting.")
@@ -305,9 +320,18 @@ struct Sidebar: View {
         .font(.callout)
     }
 
-    private var allFactorsHint: String {
-        editor.layout.factors.count < 2
-            ? "Add a second factor to see stacked labels."
-            : "One line per factor, in the order listed above. Any that do not fit drop to a colour strip. A key appears under the plate."
+    /// Only the stacking modes need explaining — None and Active factor say what they
+    /// do in their own labels.
+    private var modeHint: String? {
+        switch editor.layout.wellLabelMode {
+        case .allFactors:
+            return editor.layout.factors.count < 2
+                ? "Add a second factor to see stacked labels."
+                : "One line per factor, in the order listed above. Any that do not fit drop to a colour strip. A key appears under the plate."
+        case .overview:
+            return "Every factor at the same size on a plain well, with nothing selected — the whole design at a glance (⇧⌘O)."
+        case .none, .activeFactor:
+            return nil
+        }
     }
 }

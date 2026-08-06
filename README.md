@@ -36,15 +36,16 @@ abandons a rename, Return or clicking away keeps it.
 
 ### How much each well shows
 
-**Display → Text in wells** in the sidebar has three settings:
+**Display → Text in wells** in the sidebar has four settings:
 
 | Setting | What a well shows |
 | --- | --- |
 | None | Colour only |
-| Active factor | The active factor's value, filling the well (the default) |
-| All factors | One labelled line per factor, stacked |
+| Active | The active factor's value, filling the well (the default) |
+| All | One labelled line per factor, stacked |
+| Overview | Every factor at one size on a plain well, nothing selected |
 
-In **All factors** the lines follow the order of the factor list — drag factors in
+In **All** the lines follow the order of the factor list — drag factors in
 the sidebar to reorder them — each headed by a small rail in that level's colour,
 with a key under the plate naming the order. A factor with no value in a well keeps
 its slot, so line 2 means the same factor in every well and a blank reads as a blank
@@ -52,8 +53,18 @@ rather than a shifted line. Wells are drawn as rounded squares in this mode beca
 circles waste the width the text needs. Factors that do not fit at the current well
 size fall back to the colour strip along the bottom, so nothing is silently dropped.
 
-This mode supersedes the *Show other factors* checkbox, which is therefore hidden
-while it is on — the stacked list already accounts for every factor.
+**Overview** (`⇧⌘O`) is the same stack with the design read rather than edited. The
+well takes no colour from any factor — every one is a plain neutral tile, so the only
+colour in the plate is the rails — and no line is treated as the headline, so all of
+them share one size and weight. Choosing it also deselects the factor you were
+painting: nothing is armed, clicking selects wells without changing them, and an edit
+says so rather than quietly doing nothing. Click any factor, press `⇧⌘O` again, or
+pick another setting to go back to exactly what you were doing.
+
+Both stacking modes supersede the *Show other factors* checkbox, which is therefore
+hidden while either is on — the stacked list already accounts for every factor. On a
+plate too dense to stack, Overview keeps the first factor as the well's text and drops
+the rest to the colour strip, so a 384- or 1536-well design still reads at a glance.
 
 The setting is saved with the document, so a layout reopens — and exports — the
 way you designed it.
@@ -75,6 +86,7 @@ so deleting a template never affects a layout that used it.
 | `1`–`9`, `0` | Arm condition 1–10 of the active factor |
 | `[` / `]` | Previous / next condition |
 | `⌘1`–`⌘9` | Switch active factor |
+| `⇧⌘O` | Overview — every factor at once, nothing armed; again to go back |
 | drag | Paint a rectangle of wells |
 | `⌘`-drag | Free-hand brush |
 | `⌥`-drag | Erase |
