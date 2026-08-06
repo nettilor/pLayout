@@ -48,9 +48,13 @@ abandons a rename, Return or clicking away keeps it.
 In **All** the lines follow the order of the factor list — drag factors in
 the sidebar to reorder them — each headed by a small rail in that level's colour,
 with a key under the plate naming the order. The line for the factor you are
-currently painting is larger and bold, so every well says what a click would change;
-switching factors moves the emphasis. If that factor did not fit as a line, no line
-is promoted rather than a different one being claimed. A factor with no value in a well keeps
+currently painting is called out three ways — a shaded band across the row, a wider
+solid marker in place of its rail, and larger bold text — so every well says what a
+click would change; switching factors moves the emphasis. Its rail becomes a plain
+marker because in this mode the well is already flooded with that factor's colour,
+which would leave a coloured rail invisible against it. If the active factor did not
+fit as a line, no line is promoted rather than a different one being claimed. A
+factor with no value in a well keeps
 its slot, so line 2 means the same factor in every well and a blank reads as a blank
 rather than a shifted line. Wells are drawn as rounded squares in this mode because
 circles waste the width the text needs. Factors that do not fit at the current well

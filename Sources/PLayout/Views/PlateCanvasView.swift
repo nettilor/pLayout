@@ -510,8 +510,14 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         // well carries, and at 3pt it read as a tick mark rather than as the swatch
         // that ties the well back to the condition list.
         let railWidth = max(2.5, min(5.5, bodyRect.width * 0.09))
+        // The active line's rail is wider as well as walled, and every rail is
+        // left-aligned inside the wider one's slot, so the text still starts at one x
+        // down the whole stack. A rail that grew rightwards would ripple into the text
+        // and leave the column ragged.
+        let activeRailWidth = railWidth * 1.45
         let inset = max(2.5, bodyRect.width * 0.055)
         let textGap = max(2, railWidth * 0.75)
+        let textStart = bodyRect.minX + inset + activeRailWidth + textGap
         // Centre the stack in whatever the stripe left behind.
         let usable = bodyRect.height - reservedBottom
         let stackHeight = plan.stackHeight(lines: lineCount, primary: primarySlot != nil)
@@ -526,31 +532,59 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
                 ? resolvedLevel(index: index, plate: plate, factor: factor)
                 : factor.level(id: plate.levelID(factor: factor.id, well: index))
 
+            // A band behind the whole line, so what is being edited is legible from a
+            // glance at the plate rather than from comparing two type sizes. Drawn in
+            // the label colour, which means it lightens a dark well and darkens a pale
+            // one without having to know which it is on.
+            if isPrimary, height >= 8, bodyRect.width >= 24 {
+                let bleed = min(1.5, plan.gap * 0.6)
+                let band = CGRect(
+                    x: bodyRect.minX + 1, y: y - bleed,
+                    width: bodyRect.width - 2, height: height + bleed * 2
+                )
+                textColor.withAlphaComponent(0.15).setFill()
+                NSBezierPath(
+                    roundedRect: band, xRadius: min(3, band.height / 3), yRadius: min(3, band.height / 3)
+                ).fill()
+            }
+
+            let thisRail = isPrimary ? activeRailWidth : railWidth
             let railRect = CGRect(
                 x: bodyRect.minX + inset, y: y + height * 0.14,
-                width: railWidth, height: height * 0.72
+                width: thisRail, height: height * 0.72
             )
-            let radius = railWidth / 2
+            let radius = thisRail / 2
             if let level, let colour = NSColor(hex: level.colorHex) {
-                colour.setFill()
-                NSBezierPath(roundedRect: railRect, xRadius: radius, yRadius: radius).fill()
-                // A rail whose colour is close to the fill would otherwise disappear —
-                // and the headline's rail always *is* the fill, since both come from
-                // the factor being painted, so the one line the eye is sent to gets the
-                // strongest wall of the lot. Inset by half the width so a heavier stroke
-                // stays inside the capsule instead of swelling it.
-                let wall: CGFloat = isPrimary ? 1 : 0.75
-                textColor.withAlphaComponent(isPrimary ? 0.95 : 0.7).setStroke()
-                let outline = NSBezierPath(
-                    roundedRect: railRect.insetBy(dx: wall / 2, dy: wall / 2),
-                    xRadius: radius, yRadius: radius
-                )
-                outline.lineWidth = wall
-                outline.stroke()
+                let capsule = NSBezierPath(roundedRect: railRect, xRadius: radius, yRadius: radius)
+                // The well is already flooded with the active factor's colour — the fill
+                // and this rail come from the same level — so a rail in that colour is
+                // invisible no matter how thick a wall it is given: it reads as a hollow
+                // ring, the letter O in front of the label. Where the two coincide the
+                // rail becomes a solid contrasting marker instead. No colour is lost by
+                // that; the colour is the entire well.
+                if isPrimary, onColour?.hexString == colour.hexString {
+                    textColor.setFill()
+                    capsule.fill()
+                } else {
+                    colour.setFill()
+                    capsule.fill()
+                    // A rail whose colour is close to the fill would otherwise disappear.
+                    // Inset by half the width so a heavier stroke stays inside the capsule
+                    // instead of swelling it, and taken as a *fraction* of its own rail —
+                    // a flat value ate the colour core at small well sizes.
+                    let wall: CGFloat = isPrimary ? max(0.9, thisRail * 0.19) : 0.75
+                    textColor.withAlphaComponent(isPrimary ? 1 : 0.7).setStroke()
+                    let outline = NSBezierPath(
+                        roundedRect: railRect.insetBy(dx: wall / 2, dy: wall / 2),
+                        xRadius: radius, yRadius: radius
+                    )
+                    outline.lineWidth = wall
+                    outline.stroke()
+                }
 
                 let textRect = CGRect(
-                    x: railRect.maxX + textGap, y: y,
-                    width: bodyRect.maxX - inset - railRect.maxX - textGap, height: height
+                    x: textStart, y: y,
+                    width: bodyRect.maxX - inset - textStart, height: height
                 )
                 let size = isPrimary ? plan.primarySize : plan.secondarySize
                 drawFitted(
