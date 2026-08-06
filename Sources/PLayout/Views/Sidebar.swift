@@ -24,9 +24,15 @@ struct Sidebar: View {
                     Image(systemName: isActive ? "largecircle.fill.circle" : "circle")
                         .foregroundStyle(isActive ? Color.accentColor : Color.secondary.opacity(0.5))
                         .font(.system(size: 11))
-                    CommitTextField(placeholder: "Factor", text: factor.name) {
-                        editor.renameFactor(factor.id, to: $0)
-                    }
+                    SelectableNameField(
+                        text: factor.name,
+                        placeholder: "Factor",
+                        onSelect: {
+                            editor.setActiveFactor(factor.id)
+                            editor.focusCanvas()
+                        },
+                        onCommit: { editor.renameFactor(factor.id, to: $0) }
+                    )
                     if factor.kind == .numeric {
                         Image(systemName: "number")
                             .font(.system(size: 9))
@@ -129,9 +135,15 @@ struct Sidebar: View {
                 KeyCap(label: "·")
             }
             SwatchPicker(hex: level.colorHex) { editor.setLevelColor(level.id, hex: $0) }
-            CommitTextField(placeholder: "Name", text: level.name) {
-                editor.renameLevel(level.id, to: $0)
-            }
+            SelectableNameField(
+                text: level.name,
+                placeholder: "Name",
+                onSelect: {
+                    editor.armedLevelID = level.id
+                    editor.focusCanvas()
+                },
+                onCommit: { editor.renameLevel(level.id, to: $0) }
+            )
             Text(count == 0 ? "—" : "\(count)")
                 .font(.caption)
                 .monospacedDigit()

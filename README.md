@@ -30,6 +30,10 @@ paint one factor at a time, and every well keeps a value for each of them.
 
 With a single factor it behaves exactly like a simple condition painter.
 
+In the sidebar, a **single click** on a factor or condition selects it — anywhere on
+the row, including the name — and a **double click** on the name renames it. Escape
+abandons a rename, Return or clicking away keeps it.
+
 ### How much each well shows
 
 **Display → Text in wells** in the sidebar has three settings:

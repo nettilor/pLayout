@@ -158,8 +158,13 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     func attach(editor: PlateEditor) {
         self.editor = editor
         editor.canvas = self
+        // Hopped through the main queue rather than the main *run loop*: run-loop
+        // delivery is scheduled in the default mode only, so while the mouse is down
+        // — exactly when a sidebar click happens — the redraw would wait for tracking
+        // to finish. The hop itself is still needed because objectWillChange fires
+        // before the value changes.
         cancellable = editor.objectWillChange
-            .receive(on: RunLoop.main)
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.needsDisplay = true }
     }
 

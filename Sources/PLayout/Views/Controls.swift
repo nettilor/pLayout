@@ -45,6 +45,80 @@ struct CommitTextField: View {
     }
 }
 
+/// A name that a single click selects and a double click renames.
+///
+/// Selecting a factor or a condition is by far the more common action, so it gets the
+/// single click and the whole row's worth of target area; renaming is deliberate, so it
+/// asks for a double click. Escape abandons an edit, Return and clicking away keep it.
+struct SelectableNameField: View {
+    let text: String
+    var placeholder: String = ""
+    var font: Font = .body
+    let onSelect: () -> Void
+    let onCommit: (String) -> Void
+
+    @State private var isEditing = false
+    @State private var draft = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        Group {
+            if isEditing {
+                TextField(placeholder, text: $draft)
+                    .textFieldStyle(.plain)
+                    .font(font)
+                    .focused($focused)
+                    .onSubmit(commit)
+                    .onExitCommand(perform: cancel)
+                    .onChange(of: focused) { _, nowFocused in
+                        if !nowFocused { commit() }
+                    }
+                    // Closing a popover or collapsing a section tears the field down
+                    // without ever moving focus, so catch that too.
+                    .onDisappear(perform: commit)
+            } else {
+                Text(text)
+                    .font(font)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2, perform: beginEditing)
+                    // Simultaneous, not chained. Two ordinary tap gestures become
+                    // exclusive, so the single click cannot resolve until the
+                    // double-click interval has elapsed — which is felt as lag on the
+                    // action you take most. Recognising them in parallel lets the
+                    // selection land on mouse-up; a double click simply selects first
+                    // and then opens the editor, which is harmless.
+                    .simultaneousGesture(TapGesture().onEnded(onSelect))
+                    .help("Double-click to rename")
+            }
+        }
+    }
+
+    private func beginEditing() {
+        draft = text
+        isEditing = true
+        // Focus after the field exists, which also lets it win over any row-level
+        // click handling that ran on the way in.
+        DispatchQueue.main.async { focused = true }
+    }
+
+    private func commit() {
+        guard isEditing else { return }
+        isEditing = false
+        focused = false
+        let trimmed = draft.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, trimmed != text else { return }
+        onCommit(trimmed)
+    }
+
+    private func cancel() {
+        isEditing = false
+        focused = false
+    }
+}
+
 /// Colour swatch that opens the shared palette, with a system picker for anything else.
 struct SwatchPicker: View {
     let hex: String
