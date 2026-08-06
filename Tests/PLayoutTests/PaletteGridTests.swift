@@ -136,14 +136,87 @@ final class PaletteGridTests: XCTestCase {
     /// The popover tells the user this family "stays separable with red/green colour
     /// blindness", so the claim is measured rather than trusted. Stated as a comparison
     /// against Standard, which keeps it meaningful instead of a threshold pulled from
-    /// the air: Standard's own worst pair is its green against its grey.
+    /// the air.
+    ///
+    /// The margin used to be 5.5×. Lifting the palette so black text never flips also
+    /// pulled Standard's worst pair — its green against its grey, which collapsed to
+    /// nearly one colour under simulation — a long way apart, so Standard improved from
+    /// 0.017 to 0.135 and the gap narrowed to about 1.5×. Okabe–Ito is still the better
+    /// set and still earns the label; it simply has less to beat now.
     func testTheColourBlindFamilySeparatesBetterThanTheStandardOne() {
         let safe = worstSeparation(Palette.Family.colourBlind.hues)
         let standard = worstSeparation(Palette.Family.standard.hues)
         XCTAssertGreaterThan(
-            safe, standard * 3,
+            safe, standard * 1.4,
             "Okabe–Ito separated by \(safe), standard by \(standard) — the label is not earned"
         )
+    }
+
+    // MARK: - One text colour, everywhere
+
+    private func labelIsDark(on hex: String) -> Bool {
+        NSColor(hex: hex)!.contrastingLabelColor.perceivedLuminance < 0.5
+    }
+
+    /// The point of the floor. A label that is black on some conditions and white on
+    /// others reads as a glitch, so nothing the app can hand out — not a palette hue,
+    /// not a shade, not a step of a dilution series — is allowed to be dark enough to
+    /// force the flip. This is the test that keeps the well text one colour.
+    func testNothingTheAppOffersEverFlipsTheLabelToWhite() {
+        for hex in Palette.categorical {
+            XCTAssertTrue(labelIsDark(on: hex), "auto-assigned \(hex) forces a white label")
+        }
+        for family in Palette.Family.allCases {
+            for hue in family.hues {
+                XCTAssertTrue(labelIsDark(on: hue), "\(family.label) base \(hue) forces a white label")
+                for shade in Palette.shades(of: hue) {
+                    XCTAssertTrue(labelIsDark(on: shade), "\(family.label) shade \(shade) forces a white label")
+                }
+            }
+        }
+        // Series fill writes its own colours, and its deep end used to be far below the
+        // floor — a dilution series was the easiest way to see the label flip mid-plate.
+        for hue in Palette.categorical {
+            for count in [3, 8, 12] {
+                for step in Palette.ramp(count: count, baseHex: hue) {
+                    XCTAssertTrue(labelIsDark(on: step), "ramp of \(hue) produced \(step)")
+                }
+            }
+        }
+    }
+
+    /// White survives only where black genuinely could not be read. The threshold is
+    /// WCAG's own 4.5:1 line rather than the far more cautious one this used to use,
+    /// which was flipping legible mid-tones like Tableau's blue.
+    func testWhiteIsKeptOnlyForColoursBlackCouldNotBeReadOn() {
+        XCTAssertFalse(labelIsDark(on: "#000000"))
+        XCTAssertFalse(labelIsDark(on: "#1A1A1A"))
+        XCTAssertTrue(labelIsDark(on: "#4E79A7"), "Tableau's own blue is 4.6:1 — it does not need white")
+
+        // The flip point sits at or below the luminance where black stops clearing 4.5:1.
+        let wcagLimit = 4.5 * 0.05 - 0.05
+        for step in stride(from: 0.0, through: 1.0, by: 0.01) {
+            let grey = NSColor(white: step, alpha: 1)
+            if grey.perceivedLuminance > wcagLimit {
+                XCTAssertTrue(
+                    grey.contrastingLabelColor.perceivedLuminance < 0.5,
+                    "luminance \(grey.perceivedLuminance) clears WCAG but still got a white label"
+                )
+            }
+        }
+    }
+
+    /// Every colour offered has to sit above the floor with room for the two steps
+    /// below it in its own column, or those steps get clamped back above the line.
+    func testEveryBaseHasRoomForItsOwnDarkSteps() {
+        for family in Palette.Family.allCases {
+            for hue in family.hues {
+                XCTAssertGreaterThan(
+                    luminance(hue), Palette.wellTextFloor,
+                    "\(family.label) base \(hue) sits on the floor, leaving its darker steps nowhere to go"
+                )
+            }
+        }
     }
 
     // MARK: - Matching

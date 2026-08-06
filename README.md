@@ -132,6 +132,13 @@ same line of a well.
 ⋯ menu beside the condition list recolours every condition at once — as a spread of
 hues, or as a light-to-dark ramp when the factor is numeric.
 
+Well labels are always the same near-black. A label that is black on some conditions
+and white on others reads as a glitch rather than as contrast, so instead of switching
+the text, the app declines to offer a colour too dark to carry it: every hue, every
+shade and every step of a series stays above the contrast line for black text. The
+only thing that still gets a white label is a colour you deliberately pick from
+**Custom…** that is nearly black, where black text could not be read at all.
+
 ## Excel round-trip
 
 `⌘C` puts the selection on the pasteboard as tab-separated text, which pastes

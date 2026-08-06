@@ -2,11 +2,15 @@ import AppKit
 
 enum Palette {
     /// Categorical colours chosen for separation at small well sizes.
+    ///
+    /// Three of these are Tableau's own hues lifted in brightness — and nothing else —
+    /// until near-black text clears `wellTextFloor` on them: the blue, the brown and
+    /// the grey were the only ones dark enough to have forced a white label.
     static let categorical: [String] = [
-        "#4E79A7", "#F28E2B", "#59A14F", "#E15759", "#B07AA1",
-        "#76B7B2", "#EDC948", "#FF9DA7", "#9C755F", "#8CD17D",
+        "#5889BC", "#F28E2B", "#59A14F", "#E15759", "#B07AA1",
+        "#76B7B2", "#EDC948", "#FF9DA7", "#A17962", "#8CD17D",
         "#A0CBE8", "#FFBE7D", "#D4A6C8", "#499894", "#D7B5A6",
-        "#B6992D", "#86BCB6", "#FABFD2", "#79706E", "#F1CE63",
+        "#B6992D", "#86BCB6", "#FABFD2", "#928785", "#F1CE63",
     ]
 
     static func color(at index: Int) -> String {
@@ -50,11 +54,14 @@ enum Palette {
         var hues: [String] {
             switch self {
             case .standard:
-                return ["#4E79A7", "#F28E2B", "#59A14F", "#E15759",
-                        "#B07AA1", "#76B7B2", "#EDC948", "#79706E"]
+                return ["#5889BC", "#F28E2B", "#59A14F", "#E15759",
+                        "#B07AA1", "#76B7B2", "#EDC948", "#928785"]
             case .colourBlind:
-                return ["#0072B2", "#56B4E9", "#009E73", "#F0E442",
-                        "#E69F00", "#D55E00", "#CC79A7", "#666666"]
+                // Okabe–Ito, with its blue and its black lifted in brightness to clear
+                // `wellTextFloor`. Hue and saturation are untouched, and the separation
+                // test confirms the set still earns the name.
+                return ["#008AD7", "#56B4E9", "#009E73", "#F0E442",
+                        "#E69F00", "#D86000", "#CC79A7", "#8B8B8B"]
             case .muted:
                 return ["#A0CBE8", "#FFBE7D", "#8CD17D", "#FF9DA7",
                         "#D4A6C8", "#86BCB6", "#F1CE63", "#BAB0AC"]
@@ -99,9 +106,18 @@ enum Palette {
             anchor + minimumStep * CGFloat(max(middle, 1)),
             min(ceiling, max(0.88, anchor + 0.22))
         )
+        // The dark end stops where near-black text stops being legible on it. Measured
+        // at the saturation the darkest step actually uses, because saturation moves
+        // luminance too — which is also why the dark steps no longer deepen saturation
+        // as they used to: the extra richness cost exactly the headroom the floor needs.
+        // Clamped below the anchor so the floor can never invert or collapse the ramp.
+        let darkestSaturation = s
+        let readable = brightness(
+            hue: h, saturation: darkestSaturation, clearing: wellTextFloor
+        )
         let darkest = min(
             anchor - minimumStep * CGFloat(max(count - 1 - middle, 1)),
-            min(0.42, anchor * 0.62)
+            max(min(0.42, anchor * 0.62), readable)
         )
 
         return (0..<count).map { i in
@@ -124,11 +140,42 @@ enum Palette {
             let u = CGFloat(i - middle) / CGFloat(count - 1 - middle)
             return NSColor(
                 hue: h,
-                saturation: min(1, s * (1 + 0.15 * u)),
+                saturation: darkestSaturation,
                 brightness: anchor - (anchor - darkest) * u,
                 alpha: 1
             ).hexString
         }
+    }
+
+    // MARK: - Keeping well text one colour
+
+    /// Well labels are always the same near-black, because a label that flips to white
+    /// on some conditions and not others reads as a glitch rather than as contrast.
+    /// Holding that means never *offering* a colour too dark to carry it.
+    ///
+    /// WCAG puts 4.5:1 against black at relative luminance 0.175, and this sits just
+    /// above it. The *base* hues are lifted further, to about 0.22, because the two
+    /// steps below a base in its shade column have to fit underneath it and still land
+    /// above this line — a base sitting exactly on the floor leaves them nowhere to go.
+    static let wellTextFloor: CGFloat = 0.19
+
+    /// The brightness at which this hue first clears `luminance`, by bisection.
+    /// Relative luminance rises monotonically with brightness at a fixed hue and
+    /// saturation, but *how fast* is entirely hue-dependent — a yellow clears the floor
+    /// at a brightness a blue is nowhere near — so there is no closed form to use here.
+    static func brightness(
+        hue h: CGFloat, saturation s: CGFloat, clearing luminance: CGFloat
+    ) -> CGFloat {
+        func lum(_ v: CGFloat) -> CGFloat {
+            NSColor(hue: h, saturation: s, brightness: v, alpha: 1).perceivedLuminance
+        }
+        guard lum(1) > luminance else { return 1 }
+        var lo: CGFloat = 0, hi: CGFloat = 1
+        for _ in 0..<14 {
+            let mid = (lo + hi) / 2
+            if lum(mid) < luminance { lo = mid } else { hi = mid }
+        }
+        return hi
     }
 
     /// Hex comparison that survives case and a missing "#", so a hand-edited file
@@ -148,10 +195,16 @@ enum Palette {
         var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         hsb.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
         if count == 1 { return [baseHex] }
+        // Same floor as the swatch grid: the deep end of a dilution series still has to
+        // carry the same near-black label as every other well.
+        let deepest = max(
+            min(b, 0.92), 0.45,
+            brightness(hue: h, saturation: max(s, 0.55), clearing: wellTextFloor)
+        )
         return (0..<count).map { i in
             let t = CGFloat(i) / CGFloat(count - 1)
             let sat = 0.18 + (max(s, 0.55) - 0.18) * t
-            let bri = 0.98 - (0.98 - max(min(b, 0.92), 0.45)) * t
+            let bri = 0.98 - (0.98 - deepest) * t
             let c = NSColor(hue: h, saturation: sat, brightness: bri, alpha: 1)
             return c.hexString
         }
@@ -188,7 +241,16 @@ extension NSColor {
         return 0.2126 * lin(c.redComponent) + 0.7152 * lin(c.greenComponent) + 0.0722 * lin(c.blueComponent)
     }
 
+    /// Near-black on anything the app will actually hand out — every palette colour and
+    /// every shade is floored at `Palette.wellTextFloor` precisely so this never flips.
+    /// A label that switches to white on some conditions and not others reads as a
+    /// glitch, not as contrast.
+    ///
+    /// White survives only as a floor for a deliberately near-black custom colour,
+    /// where black text would not be readable at all. The threshold is the real WCAG
+    /// 4.5:1 limit, not the far more cautious 0.42 this used to use — that one was
+    /// flipping perfectly legible mid-tones like `#4E79A7` (4.6:1) to white.
     var contrastingLabelColor: NSColor {
-        perceivedLuminance > 0.42 ? NSColor.black.withAlphaComponent(0.82) : NSColor.white
+        perceivedLuminance > 0.175 ? NSColor.black.withAlphaComponent(0.85) : NSColor.white
     }
 }

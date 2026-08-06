@@ -398,8 +398,11 @@ final class WorkbookTests: XCTestCase {
         XCTAssertTrue(sheet.contains("state=\"frozen\""))
 
         let styles = try String(contentsOf: directory.appendingPathComponent("xl/styles.xml"), encoding: .utf8)
-        // Painted colours survive into the workbook as solid fills.
-        XCTAssertTrue(styles.contains("FF4E79A7"), "level colour missing from styles.xml")
+        // Painted colours survive into the workbook as solid fills. Taken from the
+        // palette rather than written out as a literal: hard-coding the hex made this
+        // fail the moment the palette was retuned, which says nothing about the export.
+        let painted = "FF" + Palette.color(at: 0).dropFirst().uppercased()
+        XCTAssertTrue(styles.contains(painted), "level colour \(painted) missing from styles.xml")
     }
 
     func testWorkbookHasASheetPerFactorPlusTidyAndLegend() throws {
