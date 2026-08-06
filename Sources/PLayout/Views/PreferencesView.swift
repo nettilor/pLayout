@@ -108,7 +108,7 @@ private struct WellPreview: View {
                 let colour = NSColor(hex: sample.hex) ?? .gray
                 well(
                     fill: colour,
-                    marker: markerStyle == .deeperShade ? colour.deepened : colour.labelInk(textStyle),
+                    marker: markerStyle == .deeperShade ? colour.contrastingShade : colour.labelInk(textStyle),
                     ink: colour.labelInk(textStyle),
                     name: sample.name
                 )

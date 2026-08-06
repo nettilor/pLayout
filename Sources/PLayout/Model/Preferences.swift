@@ -136,18 +136,27 @@ extension NSColor {
         style.fixedInk ?? contrastingLabelColor
     }
 
-    /// This colour taken far enough down to read as a mark against itself. Saturation
-    /// is raised as brightness falls so the result stays recognisably the same hue
-    /// rather than sliding towards grey, and the floor keeps an already-dark colour
-    /// from bottoming out into a black that no longer says which condition it is.
-    var deepened: NSColor {
+    /// This colour pushed hard away from its own lightness, keeping its hue: the marker
+    /// for a condition, drawn on a well already filled with that condition's colour.
+    ///
+    /// The direction is chosen from the colour rather than fixed. Almost everything the
+    /// palette offers is light enough to go darker, but a dark custom colour has no room
+    /// below it and has to go the other way, or the marker vanishes into its own well.
+    /// Saturation rises either way, so the result deepens or brightens rather than
+    /// sliding towards grey or towards white.
+    ///
+    /// It goes further than the swatch grid's darkest step, which stops where a
+    /// near-black label would stop being readable — nothing is written on a marker, so
+    /// that floor does not apply here.
+    var contrastingShade: NSColor {
         guard let c = usingColorSpace(.sRGB) else { return self }
         var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         c.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        let goDarker = perceivedLuminance > 0.16
         return NSColor(
             hue: h,
-            saturation: min(1, s * 1.25),
-            brightness: max(0.16, b * 0.42),
+            saturation: min(1, s * (goDarker ? 1.2 : 0.85)),
+            brightness: goDarker ? max(0.20, b * 0.5) : min(1, max(b * 1.9, b + 0.4)),
             alpha: 1
         )
     }

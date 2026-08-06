@@ -88,44 +88,54 @@ final class PreferencesTests: XCTestCase {
         XCTAssertNil(WellTextStyle.automatic.fixedInk)
     }
 
-    // MARK: - The deeper-shade marker
+    // MARK: - The coloured marker
 
-    /// The marker sits on a well already filled with the colour itself, so "darker" has
-    /// to mean visibly darker — not a shade that merges back into its own background.
-    func testTheDeeperMarkerIsClearlyDarkerThanTheWellItSitsOn() {
+    /// The marker sits on a well already filled with the colour itself, so it has to
+    /// separate from it hard — a shade that merges back into its own background is the
+    /// whole failure this option exists to avoid.
+    func testTheColouredMarkerSeparatesFromTheWellItSitsOn() {
         for family in Palette.Family.allCases {
             for hue in family.hues {
                 let colour = NSColor(hex: hue)!
-                let deep = colour.deepened
+                let marker = colour.contrastingShade
                 XCTAssertLessThan(
-                    deep.perceivedLuminance, colour.perceivedLuminance * 0.55,
-                    "\(hue) deepened to \(deep.hexString), barely darker than the well"
+                    marker.perceivedLuminance, colour.perceivedLuminance * 0.55,
+                    "\(hue) → \(marker.hexString), barely different from the well"
                 )
             }
         }
     }
 
     /// It has to stay recognisably the same condition, which is the only reason to
-    /// prefer it over a plain marker — so the hue must survive the darkening.
-    func testTheDeeperMarkerKeepsItsHue() {
-        for hue in Palette.Family.standard.hues {
+    /// prefer it over a plain marker — so the hue survives in both directions.
+    func testTheColouredMarkerKeepsItsHue() {
+        for hue in Palette.Family.standard.hues + ["#102A44", "#0A0A2A"] {
             let colour = NSColor(hex: hue)!.usingColorSpace(.sRGB)!
-            let deep = colour.deepened.usingColorSpace(.sRGB)!
+            let marker = colour.contrastingShade.usingColorSpace(.sRGB)!
             var h1: CGFloat = 0, s1: CGFloat = 0, b1: CGFloat = 0, a: CGFloat = 0
             var h2: CGFloat = 0, s2: CGFloat = 0, b2: CGFloat = 0
             colour.getHue(&h1, saturation: &s1, brightness: &b1, alpha: &a)
-            deep.getHue(&h2, saturation: &s2, brightness: &b2, alpha: &a)
+            marker.getHue(&h2, saturation: &s2, brightness: &b2, alpha: &a)
             // Greys have no hue to preserve, and getHue reports 0 for them either way.
             guard s1 > 0.15 else { continue }
-            XCTAssertEqual(h1, h2, accuracy: 0.02, "\(hue) changed hue when deepened")
+            XCTAssertEqual(h1, h2, accuracy: 0.02, "\(hue) changed hue")
         }
     }
 
-    /// A near-black condition has nowhere left to go, and a marker that bottoms out at
-    /// pure black stops saying which condition it is.
-    func testTheDeeperMarkerDoesNotBottomOut() {
-        for hex in ["#000000", "#0A0A0A", "#101820"] {
-            XCTAssertGreaterThan(NSColor(hex: hex)!.deepened.perceivedLuminance, 0.005, hex)
+    /// A condition that is already almost black has no room below it, so the marker
+    /// goes the other way instead of bottoming out into a black that says nothing.
+    ///
+    /// Measured as a ratio, not a difference: down here the absolute gap between two
+    /// obviously different colours is a couple of hundredths, so a fixed margin asks
+    /// for a separation the dark end cannot express.
+    func testAnAlreadyDarkConditionGetsALighterMarkerInstead() {
+        for hex in ["#000000", "#0A0A0A", "#101820", "#0A0A2A"] {
+            let colour = NSColor(hex: hex)!
+            XCTAssertGreaterThan(
+                colour.contrastingShade.perceivedLuminance,
+                colour.perceivedLuminance * 2.5 + 0.01,
+                "\(hex) had nowhere darker to go and was not lightened either"
+            )
         }
     }
 }

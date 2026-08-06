@@ -571,8 +571,15 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
                 // ring, the letter O in front of the label. Where the two coincide the
                 // rail becomes a solid contrasting marker instead. No colour is lost by
                 // that; the colour is the entire well.
-                if isPrimary, onColour?.hexString == colour.hexString {
-                    (marker == .deeperShade ? colour.deepened : textColor).setFill()
+                // The active marker sits on a well already filled with its own colour, so
+                // it is drawn solid and unwalled whichever style is chosen. A wall was
+                // tried twice — matching the label, then contrasting with the fill — and
+                // both times the ring plus a differently coloured middle read as the
+                // letter **O** in front of the label at these sizes. Anything this small
+                // has to be one shape in one colour.
+                let isMarker = isPrimary && onColour?.hexString == colour.hexString
+                if isMarker {
+                    (marker == .deeperShade ? colour.contrastingShade : textColor).setFill()
                     capsule.fill()
                 } else {
                     colour.setFill()
