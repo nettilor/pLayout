@@ -132,12 +132,27 @@ same line of a well.
 ⋯ menu beside the condition list recolours every condition at once — as a spread of
 hues, or as a light-to-dark ramp when the factor is numeric.
 
-Well labels are always the same near-black. A label that is black on some conditions
-and white on others reads as a glitch rather than as contrast, so instead of switching
-the text, the app declines to offer a colour too dark to carry it: every hue, every
-shade and every step of a series stays above the contrast line for black text. The
-only thing that still gets a white label is a colour you deliberately pick from
-**Custom…** that is nearly black, where black text could not be read at all.
+## Settings (`⌘,`)
+
+Two things about how a plate is drawn are a matter of taste rather than of the
+experiment, so they live in the Settings window and follow you between documents
+instead of travelling inside a `.plate` file.
+
+**Text colour** — *Match the well* picks black or white per condition, whichever is
+legible. *Always black* and *Always white* use one colour throughout: a label that is
+black on some conditions and white on others reads as a glitch to some people rather
+than as contrast. Every hue, shade and series step the app offers is light enough to
+carry black text, so *Always black* is safe across the palette; only a nearly-black
+colour picked from **Custom…** will defeat it. Overview's neutral tile has no colour of
+its own to contrast against, so under *Always white* the tile darkens instead.
+
+**Active marker** — the marker on the factor you are painting. It cannot simply be that
+condition's colour, because in **All** the well is already flooded with it. *Match the
+label* draws a plain marker in the text colour; *Darker shade of the well* keeps the
+condition's own colour taken far enough down to stand against it.
+
+Both are shown in a live preview across light and dark conditions, which is the
+quickest way to see what each one costs.
 
 ## Excel round-trip
 

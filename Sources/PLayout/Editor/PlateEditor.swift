@@ -52,6 +52,12 @@ final class PlateEditor: ObservableObject {
         PlateTemplateStore.shared.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
+        // Display settings live outside any document, so a change in the Settings
+        // window has to reach every open canvas — the canvas redraws off this editor's
+        // objectWillChange and has no other way to hear about it.
+        Preferences.shared.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
         // `$layout` delivers the new value, unlike objectWillChange, and it fires for
         // undo and redo too — not just for edits made through this editor.
         document.$layout

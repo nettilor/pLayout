@@ -10,6 +10,12 @@ struct PlateLayoutApp: App {
         // document window opens too small to show a 96-well plate comfortably.
         .defaultSize(width: 1240, height: 800)
         .commands { PlateCommands() }
+
+        // A `Settings` scene is what puts "Settings…" in the app menu under ⌘, — there
+        // is no command to add by hand, and adding one would collide with it.
+        Settings {
+            PreferencesView()
+        }
     }
 }
 

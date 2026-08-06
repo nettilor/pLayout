@@ -210,6 +210,8 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         let geo = geometry
         let format = plate.format
         let mode = editor.layout.wellLabelMode
+        let textStyle = Preferences.shared.wellTextStyle
+        let markerStyle = Preferences.shared.activeMarkerStyle
         // Overview has no factor being painted, so no factor colours the well. Read
         // from the mode rather than from `activeFactor` alone: that keeps the drawing
         // correct on its own terms, including when a test sets the mode directly.
@@ -265,7 +267,12 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         let emptyFill = NSColor.quaternaryLabelColor.withAlphaComponent(exportMode ? 0.10 : 0.13)
         // Every Overview well gets this same tile, so it is pitched a little stronger
         // than the empty-well fill: it has to read as a surface, not as an absence.
-        let neutralFill = NSColor.quaternaryLabelColor.withAlphaComponent(exportMode ? 0.14 : 0.18)
+        // It has no colour of its own to contrast against, so under "always white" it
+        // is the tile that moves, not the ink — otherwise Overview is unreadable.
+        let neutralFill = textStyle.prefersDarkNeutral
+            ? NSColor(white: 0.32, alpha: 1)
+            : NSColor.quaternaryLabelColor.withAlphaComponent(exportMode ? 0.14 : 0.18)
+        let neutralInk = textStyle.neutralInk
         let hairline = NSColor.separatorColor.withAlphaComponent(0.6)
         let drawHairlines = geo.cell >= 4
 
@@ -302,7 +309,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
                     if showSingleText {
                         drawFitted(
                             level.name, in: bodyRect, maxFontSize: wellFontSize,
-                            color: color.contrastingLabelColor
+                            color: color.labelInk(textStyle)
                         )
                     }
                 } else {
@@ -312,7 +319,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
                        let name = soloFactor
                         .level(id: plate.levelID(factor: soloFactor.id, well: index))?.name
                     {
-                        drawFitted(name, in: bodyRect, maxFontSize: wellFontSize, color: .labelColor)
+                        drawFitted(name, in: bodyRect, maxFontSize: wellFontSize, color: neutralInk)
                     }
                 }
 
@@ -321,7 +328,8 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
                         in: bodyRect, factors: stacked, plate: plate, index: index,
                         plan: plan, activeFactorID: editor.activeFactorID,
                         onColour: level.flatMap { NSColor(hex: $0.colorHex) },
-                        reservedBottom: stripeHeight
+                        reservedBottom: stripeHeight,
+                        style: textStyle, neutralInk: neutralInk, marker: markerStyle
                     )
                 }
 
@@ -493,7 +501,8 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     /// always means the same factor in every well.
     private func drawFactorStack(
         in bodyRect: CGRect, factors: [Factor], plate: Plate, index: Int,
-        plan: LabelPlan, activeFactorID: UUID?, onColour: NSColor?, reservedBottom: CGFloat
+        plan: LabelPlan, activeFactorID: UUID?, onColour: NSColor?, reservedBottom: CGFloat,
+        style: WellTextStyle, neutralInk: NSColor, marker: ActiveMarkerStyle
     ) {
         let lineCount = min(plan.lineCount, factors.count)
         guard lineCount >= 1 else { return }
@@ -504,8 +513,8 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
 
         // Overview puts the text on a neutral tile with nothing behind it to fight
         // with, and reading it is the whole job there, so it gets full strength.
-        let textColor = onColour?.contrastingLabelColor
-            ?? NSColor.labelColor.withAlphaComponent(plan.uniform ? 1 : 0.75)
+        let textColor = onColour?.labelInk(style)
+            ?? (plan.uniform ? neutralInk : neutralInk.withAlphaComponent(0.75))
         // Deliberately wider than a hairline: the rail is the only colour a stacked
         // well carries, and at 3pt it read as a tick mark rather than as the swatch
         // that ties the well back to the condition list.
@@ -563,7 +572,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
                 // rail becomes a solid contrasting marker instead. No colour is lost by
                 // that; the colour is the entire well.
                 if isPrimary, onColour?.hexString == colour.hexString {
-                    textColor.setFill()
+                    (marker == .deeperShade ? colour.deepened : textColor).setFill()
                     capsule.fill()
                 } else {
                     colour.setFill()
