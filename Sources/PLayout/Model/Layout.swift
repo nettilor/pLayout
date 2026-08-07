@@ -232,6 +232,11 @@ struct Layout: Codable, Hashable {
     var plates: [Plate] = []
     var padWellLabels: Bool = false
     var wellLabelMode: WellLabelMode = .activeFactor
+    /// Draws the plate on its side — rows across, columns down. Purely how it is shown:
+    /// no well changes its id, its values or its place in the file. It lives with the
+    /// document rather than in Preferences because exports and printing render the
+    /// plate as displayed, so the orientation has to travel with the layout.
+    var transposedView: Bool = false
     var snapshots: [LayoutSnapshot] = []
     var notes: String = ""
 
@@ -245,6 +250,7 @@ struct Layout: Codable, Hashable {
         plates: [Plate] = [],
         padWellLabels: Bool = false,
         wellLabelMode: WellLabelMode = .activeFactor,
+        transposedView: Bool = false,
         snapshots: [LayoutSnapshot] = [],
         notes: String = ""
     ) {
@@ -253,6 +259,7 @@ struct Layout: Codable, Hashable {
         self.plates = plates
         self.padWellLabels = padWellLabels
         self.wellLabelMode = wellLabelMode
+        self.transposedView = transposedView
         self.snapshots = snapshots
         self.notes = notes
     }
@@ -269,6 +276,7 @@ struct Layout: Codable, Hashable {
         // Decoded leniently so a file written by a newer build still opens here.
         wellLabelMode = (try? container.decodeIfPresent(WellLabelMode.self, forKey: .wellLabelMode))
             .flatMap { $0 } ?? .activeFactor
+        transposedView = try container.decodeIfPresent(Bool.self, forKey: .transposedView) ?? false
         snapshots = try container.decodeIfPresent([LayoutSnapshot].self, forKey: .snapshots) ?? []
         notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
 

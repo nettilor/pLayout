@@ -77,6 +77,16 @@ struct PlateCommands: Commands {
                 }
             }
             .keyboardShortcut("o", modifiers: [.command, .shift])
+            Button {
+                editor?.toggleOrientation()
+            } label: {
+                if editor?.isTransposed == true {
+                    Label("Flip Plate", systemImage: "checkmark")
+                } else {
+                    Text("Flip Plate")
+                }
+            }
+            .keyboardShortcut("l", modifiers: [.command, .shift])
             Divider()
         }
 

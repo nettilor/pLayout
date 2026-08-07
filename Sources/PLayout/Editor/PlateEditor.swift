@@ -459,6 +459,15 @@ final class PlateEditor: ObservableObject {
         return true
     }
 
+    /// Turns the plate on its side. Undoable and saved with the document like the other
+    /// display settings, because an export renders the plate as it is shown.
+    func toggleOrientation() {
+        edit("Flip Plate") { layout in layout.transposedView.toggle() }
+        flash(layout.transposedView ? "Rows across, columns down." : "Columns across, rows down.")
+    }
+
+    var isTransposed: Bool { layout.transposedView }
+
     func setPadWellLabels(_ padded: Bool) {
         edit("Well Label Style") { layout in layout.padWellLabels = padded }
     }

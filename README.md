@@ -98,7 +98,8 @@ so deleting a template never affects a layout that used it.
 | `⌘`-drag | Free-hand brush |
 | `⌥`-drag | Erase |
 | click `A` or `1` header | Paint a whole row or column |
-| click the corner | Whole plate |
+| click the corner | Flip the plate on its side (`⇧⌘L`) |
+| `⌘A` | Select every well |
 | `space` or `F` | Fill the current selection |
 | `⌫` | Clear the active factor in the selection (`⇧⌫` clears every factor) |
 | `⎋` | Disarm — drag then selects without painting |
@@ -131,6 +132,18 @@ same line of a well.
 **Custom…** at the bottom opens the system colour picker for anything else, and the
 ⋯ menu beside the condition list recolours every condition at once — as a spread of
 hues, or as a light-to-dark ramp when the factor is numeric.
+
+## Which way up the plate sits
+
+A real plate is wider than it is tall, but a layout entered as, say, 8 rows of 6 gets
+drawn upright. Clicking the small ⊞ in the corner where the letters and numbers meet
+turns the plate on its side: rows run left to right, columns top to bottom, and the
+letters and numbers swap strips with them. `⇧⌘L` does the same.
+
+Nothing about the data moves. A1 is still the top-left well and still holds what it
+held; only the arrangement on screen changes. The orientation is saved with the
+document and undoable, because exports and printing render the plate as displayed —
+so a flipped plate exports flipped.
 
 ## Settings (`⌘,`)
 
