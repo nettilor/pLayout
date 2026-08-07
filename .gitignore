@@ -39,3 +39,7 @@ Tools/verify/
 *.xlsx
 *.csv
 !Tests/**/*.csv
+
+# Claude Code guidance and settings — local, like HANDOFF.md, deliberately not published
+CLAUDE.md
+.claude/
