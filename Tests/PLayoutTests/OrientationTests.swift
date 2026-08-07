@@ -144,10 +144,36 @@ final class OrientationTests: XCTestCase {
     /// Standing the plate on end swaps which strip each axis is labelled on; a half turn
     /// leaves them where they were but running backwards.
     func testTheHeaderStripsFollowTheirOwnAxis() {
-        XCTAssertEqual(geo(.well96, 0).columnHeaderRect(0), geo(.well96, 0).topHeaderRect(0))
-        XCTAssertEqual(geo(.well96, 1).rowHeaderRect(0), geo(.well96, 1).topHeaderRect(7))
-        XCTAssertEqual(geo(.well96, 2).columnHeaderRect(0), geo(.well96, 2).topHeaderRect(11))
-        XCTAssertEqual(geo(.well96, 3).rowHeaderRect(0), geo(.well96, 3).topHeaderRect(0))
+        XCTAssertEqual(geo(.well96, 0).columnHeaderRect(0), geo(.well96, 0).horizontalHeaderRect(0))
+        XCTAssertEqual(geo(.well96, 1).rowHeaderRect(0), geo(.well96, 1).horizontalHeaderRect(7))
+        XCTAssertEqual(geo(.well96, 2).columnHeaderRect(0), geo(.well96, 2).horizontalHeaderRect(11))
+        XCTAssertEqual(geo(.well96, 3).rowHeaderRect(0), geo(.well96, 3).horizontalHeaderRect(0))
+    }
+
+    /// The strips travel with their own edge of the plate, which is the whole point:
+    /// turning clockwise carries the numbers from the top edge to the right-hand one,
+    /// where they sit on a plate you have actually turned.
+    func testTheStripsSitOnTheEdgeTheirAxisTravelledTo() {
+        let upright = geo(.well96, 0)
+        XCTAssertLessThan(upright.rowHeaderRect(0).minX, upright.gridRect.minX, "letters left")
+        XCTAssertLessThan(upright.columnHeaderRect(0).minY, upright.gridRect.minY, "numbers on top")
+
+        let turned = geo(.well96, 1)
+        XCTAssertLessThan(turned.rowHeaderRect(0).minY, turned.gridRect.minY, "letters on top")
+        XCTAssertGreaterThanOrEqual(
+            turned.columnHeaderRect(0).minX, turned.gridRect.maxX - 0.001, "numbers on the right"
+        )
+    }
+
+    /// The button lives where the two strips meet, so it travels with them.
+    func testTheCornerFollowsTheStrips() {
+        for turn in turns {
+            let g = geo(.well96, turn)
+            XCTAssertFalse(g.gridRect.intersects(g.cornerRect), "\(turn * 90)° corner overlaps the wells")
+            XCTAssertEqual(g.hit(CGPoint(x: g.cornerRect.midX, y: g.cornerRect.midY)), .corner)
+        }
+        XCTAssertLessThan(geo(.well96, 0).cornerRect.midX, geo(.well96, 0).gridRect.minX)
+        XCTAssertGreaterThan(geo(.well96, 1).cornerRect.midX, geo(.well96, 1).gridRect.maxX)
     }
 
     func testDraggingPastTheEdgeClampsAlongTheRightAxis() {

@@ -33,6 +33,13 @@ struct PlateGeometry {
     /// grid the same shape upside down.
     var isTurnedOnEnd: Bool { quarterTurns % 2 == 1 }
 
+    /// The header strips travel with their own edge of the plate. The letters live
+    /// beside column 1 and the numbers above row A, so turning clockwise carries the
+    /// letters from the left edge to the top and the numbers from the top to the right —
+    /// which is where they end up on a plate you have actually turned.
+    var verticalStripOnRight: Bool { quarterTurns == 1 || quarterTurns == 2 }
+    var horizontalStripAtBottom: Bool { quarterTurns == 2 || quarterTurns == 3 }
+
     /// The grid as drawn. Everything that measures or hit-tests the plate works in
     /// these; only the two mapping helpers below cross back into model space.
     var displayRows: Int { isTurnedOnEnd ? format.cols : format.rows }
@@ -75,8 +82,13 @@ struct PlateGeometry {
         headerH = headerHeight(for: size)
         let totalW = headerW + size * CGFloat(gridCols)
         let totalH = headerH + size * CGFloat(gridRows)
-        originX = pad + max(0, (availableW - totalW) / 2) + headerW
-        originY = pad + max(0, (availableH - totalH) / 2) + headerH
+        // A strip sits on exactly one of each pair of opposite edges, so the plate takes
+        // the same room either way — only whether the grid is pushed clear of it changes.
+        let turns = self.quarterTurns
+        let stripOnRight = turns == 1 || turns == 2
+        let stripAtBottom = turns == 2 || turns == 3
+        originX = pad + max(0, (availableW - totalW) / 2) + (stripOnRight ? 0 : headerW)
+        originY = pad + max(0, (availableH - totalH) / 2) + (stripAtBottom ? 0 : headerH)
     }
 
     /// Shared by every point-to-cell conversion. Guards the division and the Int
@@ -94,7 +106,8 @@ struct PlateGeometry {
     }
 
     var frameRect: CGRect {
-        CGRect(x: originX - headerW, y: originY - headerH,
+        CGRect(x: verticalStripOnRight ? originX : originX - headerW,
+               y: horizontalStripAtBottom ? originY : originY - headerH,
                width: headerW + cell * CGFloat(displayCols),
                height: headerH + cell * CGFloat(displayRows))
     }
@@ -137,17 +150,25 @@ struct PlateGeometry {
             .union(cellRect(row: range.maxRow, col: range.maxCol))
     }
 
-    /// The strip along the top, indexed as drawn. It labels model columns normally and
-    /// model rows when transposed — the letters and numbers swap sides with the grid.
-    func topHeaderRect(_ index: Int) -> CGRect {
-        CGRect(x: originX + CGFloat(index) * cell, y: originY - headerH,
+    /// The strip that runs across the plate, indexed as drawn. Above the grid normally,
+    /// below it once the plate has been turned far enough to carry it there.
+    func horizontalHeaderRect(_ index: Int) -> CGRect {
+        CGRect(x: originX + CGFloat(index) * cell, y: horizontalStripY,
                width: cell, height: headerH)
     }
 
-    /// The strip down the left, indexed as drawn.
-    func sideHeaderRect(_ index: Int) -> CGRect {
-        CGRect(x: originX - headerW, y: originY + CGFloat(index) * cell,
+    /// The strip that runs down the plate, indexed as drawn.
+    func verticalHeaderRect(_ index: Int) -> CGRect {
+        CGRect(x: verticalStripX, y: originY + CGFloat(index) * cell,
                width: headerW, height: cell)
+    }
+
+    private var horizontalStripY: CGFloat {
+        horizontalStripAtBottom ? originY + cell * CGFloat(displayRows) : originY - headerH
+    }
+
+    private var verticalStripX: CGFloat {
+        verticalStripOnRight ? originX + cell * CGFloat(displayCols) : originX - headerW
     }
 
     /// Where a *model* column's header is drawn: it follows its own cells round, so it
@@ -155,16 +176,18 @@ struct PlateGeometry {
     /// for column 3" ask this way and stay correct at every turn.
     func columnHeaderRect(_ col: Int) -> CGRect {
         let p = displayPosition(row: 0, col: col)
-        return isTurnedOnEnd ? sideHeaderRect(p.row) : topHeaderRect(p.col)
+        return isTurnedOnEnd ? verticalHeaderRect(p.row) : horizontalHeaderRect(p.col)
     }
 
     func rowHeaderRect(_ row: Int) -> CGRect {
         let p = displayPosition(row: row, col: 0)
-        return isTurnedOnEnd ? topHeaderRect(p.col) : sideHeaderRect(p.row)
+        return isTurnedOnEnd ? horizontalHeaderRect(p.col) : verticalHeaderRect(p.row)
     }
 
+    /// Where the two strips meet, which is the corner they both run from — so it
+    /// travels with them as the plate turns.
     var cornerRect: CGRect {
-        CGRect(x: originX - headerW, y: originY - headerH, width: headerW, height: headerH)
+        CGRect(x: verticalStripX, y: horizontalStripY, width: headerW, height: headerH)
     }
 
     enum Hit: Equatable {
@@ -186,11 +209,11 @@ struct PlateGeometry {
             return .well(modelPosition(displayRow: down, displayCol: across))
         }
         // A strip labels whichever axis its cells belong to, which the turn decides.
-        if onGridX, point.y >= originY - headerH, point.y < originY {
+        if onGridX, point.y >= horizontalStripY, point.y < horizontalStripY + headerH {
             let well = modelPosition(displayRow: 0, displayCol: across)
             return isTurnedOnEnd ? .rowHeader(well.row) : .columnHeader(well.col)
         }
-        if onGridY, point.x >= originX - headerW, point.x < originX {
+        if onGridY, point.x >= verticalStripX, point.x < verticalStripX + headerW {
             let well = modelPosition(displayRow: down, displayCol: 0)
             return isTurnedOnEnd ? .columnHeader(well.col) : .rowHeader(well.row)
         }
@@ -810,13 +833,13 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         for index in 0..<geo.displayCols {
             let well = geo.modelPosition(displayRow: 0, displayCol: index)
             let (text, on) = label(well, axisIsRow: geo.isTurnedOnEnd, at: index)
-            draw(text, in: geo.topHeaderRect(index), highlighted: on)
+            draw(text, in: geo.horizontalHeaderRect(index), highlighted: on)
         }
 
         for index in 0..<geo.displayRows {
             let well = geo.modelPosition(displayRow: index, displayCol: 0)
             let (text, on) = label(well, axisIsRow: !geo.isTurnedOnEnd, at: index)
-            draw(text, in: geo.sideHeaderRect(index), highlighted: on)
+            draw(text, in: geo.verticalHeaderRect(index), highlighted: on)
         }
 
         drawOrientationCorner(geo: geo)
@@ -836,32 +859,61 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
             NSBezierPath(roundedRect: rect.insetBy(dx: 1.5, dy: 1.5), xRadius: 3, yRadius: 3).fill()
         }
 
-        let size = min(rect.width - 8, rect.height - 6, 13)
+        let size = min(rect.width - 8, rect.height - 6, 14)
         guard size >= 8 else { return }
         let ink = (hoveringCorner ? NSColor.controlAccentColor : NSColor.secondaryLabelColor)
-            .withAlphaComponent(hoveringCorner ? 1 : 0.75)
+            .withAlphaComponent(hoveringCorner ? 1 : 0.8)
+
+        // The arrow shows the turn the *next* click will make, so it reverses once the
+        // plate is already turned. A control that looks the same in both states is
+        // telling you what it is rather than what it will do.
+        drawTurnArrow(
+            centre: CGPoint(x: rect.midX, y: rect.midY), radius: size / 2,
+            clockwise: geo.quarterTurns == 0, ink: ink
+        )
+    }
+
+    /// An open arc with an arrowhead on the leading end. Drawn point by point rather
+    /// than with `appendArc`, whose sense of "clockwise" is the opposite of what is seen
+    /// in a flipped view — deriving the arrowhead from the same parameter as the arc is
+    /// what keeps the two from disagreeing.
+    private func drawTurnArrow(centre: CGPoint, radius: CGFloat, clockwise: Bool, ink: NSColor) {
+        guard radius >= 3.5 else { return }
         ink.setStroke()
         ink.setFill()
 
-        // Three quarters of a circle with an arrowhead — a turn, rather than the two
-        // nested rectangles that were here when this control did a transpose. The
-        // picture should say which of the two it is.
-        let radius = size / 2
-        let centre = CGPoint(x: rect.midX, y: rect.midY)
+        // The view is flipped, so a rising angle sweeps clockwise on screen.
+        let sweep: CGFloat = 260
+        let from: CGFloat = clockwise ? 150 : 30
+        let to = clockwise ? from + sweep : from - sweep
+
         let arc = NSBezierPath()
-        arc.appendArc(withCenter: centre, radius: radius, startAngle: 110, endAngle: 20, clockwise: true)
-        arc.lineWidth = 1.4
+        let steps = 40
+        for step in 0...steps {
+            let degrees = from + (to - from) * CGFloat(step) / CGFloat(steps)
+            let radians = degrees * .pi / 180
+            let point = CGPoint(x: centre.x + radius * cos(radians),
+                                y: centre.y + radius * sin(radians))
+            step == 0 ? arc.move(to: point) : arc.line(to: point)
+        }
+        arc.lineWidth = max(1.2, radius * 0.22)
         arc.lineCapStyle = .round
         arc.stroke()
 
-        // Arrowhead at the open end, pointing the way the next click will turn it.
-        let tipAngle = 20.0 * .pi / 180
-        let tip = CGPoint(x: centre.x + radius * cos(tipAngle), y: centre.y - radius * sin(tipAngle))
+        let endRadians = to * .pi / 180
+        let tip = CGPoint(x: centre.x + radius * cos(endRadians),
+                          y: centre.y + radius * sin(endRadians))
+        // Tangent in the direction of travel; the normal is just it turned a right angle.
+        let way: CGFloat = clockwise ? 1 : -1
+        let tangent = CGPoint(x: -sin(endRadians) * way, y: cos(endRadians) * way)
+        let normal = CGPoint(x: -tangent.y, y: tangent.x)
+        let reach = max(2.8, radius * 0.85)
+        let half = max(2, radius * 0.55)
+
         let head = NSBezierPath()
-        let wing = max(2.2, size * 0.22)
-        head.move(to: CGPoint(x: tip.x - wing, y: tip.y - wing * 0.35))
-        head.line(to: CGPoint(x: tip.x + wing * 0.5, y: tip.y - wing * 0.1))
-        head.line(to: CGPoint(x: tip.x - wing * 0.2, y: tip.y + wing))
+        head.move(to: CGPoint(x: tip.x + tangent.x * reach, y: tip.y + tangent.y * reach))
+        head.line(to: CGPoint(x: tip.x + normal.x * half, y: tip.y + normal.y * half))
+        head.line(to: CGPoint(x: tip.x - normal.x * half, y: tip.y - normal.y * half))
         head.close()
         head.fill()
     }

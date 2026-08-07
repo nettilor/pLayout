@@ -143,10 +143,13 @@ Clicking the ↻ in the corner where the letters and numbers meet turns the plat
 quarter clockwise, exactly as picking it up and turning it would, and clicking it again
 turns it back. `⇧⌘L` does the same.
 
-Because it is a real rotation and not a mirror, **A1 moves**: turning clockwise takes it
-from the top-left corner to the top-right. The letters and numbers go with it, running
-backwards along their strip when that is the way they now point — just as they do on a
-plate you have turned. The status bar says where A1 has ended up.
+Because it is a real rotation and not a mirror, **everything travels with the plate**.
+Turning clockwise takes A1 from the top-left corner to the top-right, carries the
+letters from the left edge to the top — running backwards, A now on the right — and
+carries the numbers from the top edge to the right-hand one, exactly where they end up
+on a plate you have actually turned. The corner button goes with them, and its arrow
+reverses to show the way the next click will turn it. The status bar says where A1 has
+ended up.
 
 Nothing about the data moves: every well keeps its id and its values, and the file is
 untouched. The orientation is saved with the document and undoable, because exports and
