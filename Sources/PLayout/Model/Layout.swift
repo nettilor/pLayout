@@ -106,6 +106,30 @@ enum WellLabelMode: String, Codable, CaseIterable, Identifiable {
     var isOverview: Bool { self == .overview }
 }
 
+// MARK: - Orientation
+
+/// Which way round a plate is drawn — a rotation of the picture, never of the data.
+enum PlateOrientation: String, Codable, Hashable {
+    /// Lie the plate down: turned only when it is taller than it is wide. A real plate
+    /// is wider than it is tall, so this is what a layout should open as, and it is why
+    /// the setting is three-valued rather than a plain Bool — "not yet decided" has to
+    /// be tellable from "deliberately upright".
+    case automatic
+    /// Rows across, columns down — the way the wells are indexed.
+    case upright
+    /// A quarter turn clockwise from upright.
+    case turned
+
+    /// Quarter turns clockwise for a plate of this shape.
+    func quarterTurns(for format: PlateFormat) -> Int {
+        switch self {
+        case .automatic: return format.rows > format.cols ? 1 : 0
+        case .upright: return 0
+        case .turned: return 1
+        }
+    }
+}
+
 // MARK: - Saved states
 
 /// A bookmark of the experimental design — every factor and every plate — so a
@@ -259,16 +283,22 @@ struct Plate: Identifiable, Codable, Hashable {
 // MARK: - Layout (the document's value)
 
 struct Layout: Codable, Hashable {
+    /// Fields that no longer exist but may still be sitting in a saved file.
+    private enum RetiredKeys: String, CodingKey {
+        case transposedView
+        case quarterTurns
+    }
+
     var formatVersion: Int = 1
     var factors: [Factor] = []
     var plates: [Plate] = []
     var padWellLabels: Bool = false
     var wellLabelMode: WellLabelMode = .activeFactor
-    /// Draws the plate on its side — rows across, columns down. Purely how it is shown:
-    /// no well changes its id, its values or its place in the file. It lives with the
-    /// document rather than in Preferences because exports and printing render the
-    /// plate as displayed, so the orientation has to travel with the layout.
-    var transposedView: Bool = false
+    /// Which way round the plate is drawn. Purely how it is shown: no well changes its
+    /// id, its values or its place in the file. It lives with the document rather than
+    /// in Preferences because exports and printing render the plate as displayed, so
+    /// the orientation has to travel with the layout.
+    var orientation: PlateOrientation = .automatic
     var snapshots: [LayoutSnapshot] = []
     var notes: String = ""
 
@@ -282,7 +312,7 @@ struct Layout: Codable, Hashable {
         plates: [Plate] = [],
         padWellLabels: Bool = false,
         wellLabelMode: WellLabelMode = .activeFactor,
-        transposedView: Bool = false,
+        orientation: PlateOrientation = .automatic,
         snapshots: [LayoutSnapshot] = [],
         notes: String = ""
     ) {
@@ -291,7 +321,7 @@ struct Layout: Codable, Hashable {
         self.plates = plates
         self.padWellLabels = padWellLabels
         self.wellLabelMode = wellLabelMode
-        self.transposedView = transposedView
+        self.orientation = orientation
         self.snapshots = snapshots
         self.notes = notes
     }
@@ -308,7 +338,16 @@ struct Layout: Codable, Hashable {
         // Decoded leniently so a file written by a newer build still opens here.
         wellLabelMode = (try? container.decodeIfPresent(WellLabelMode.self, forKey: .wellLabelMode))
             .flatMap { $0 } ?? .activeFactor
-        transposedView = try container.decodeIfPresent(Bool.self, forKey: .transposedView) ?? false
+        // Two short-lived predecessors, both read through their own key type — the
+        // synthesized `CodingKeys` only knows about properties that still exist.
+        // `transposedView` was a mirror rather than a turn; `quarterTurns` was a
+        // four-way cycle. Either one having been set means the user had turned the
+        // plate, so both land on `.turned`.
+        let legacy = try? decoder.container(keyedBy: RetiredKeys.self)
+        let wasMirrored = (try? legacy?.decodeIfPresent(Bool.self, forKey: .transposedView)) ?? nil
+        let oldTurns = (try? legacy?.decodeIfPresent(Int.self, forKey: .quarterTurns)) ?? nil
+        orientation = try container.decodeIfPresent(PlateOrientation.self, forKey: .orientation)
+            ?? (wasMirrored == true || (oldTurns ?? 0) != 0 ? .turned : .automatic)
         snapshots = try container.decodeIfPresent([LayoutSnapshot].self, forKey: .snapshots) ?? []
         notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
 

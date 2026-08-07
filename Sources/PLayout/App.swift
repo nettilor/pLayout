@@ -78,12 +78,12 @@ struct PlateCommands: Commands {
             }
             .keyboardShortcut("o", modifiers: [.command, .shift])
             Button {
-                editor?.toggleOrientation()
+                editor?.rotatePlate()
             } label: {
-                if editor?.isTransposed == true {
-                    Label("Flip Plate", systemImage: "checkmark")
+                if editor?.isTurned == true {
+                    Label("Turn Plate 90°", systemImage: "checkmark")
                 } else {
-                    Text("Flip Plate")
+                    Text("Turn Plate 90°")
                 }
             }
             .keyboardShortcut("l", modifiers: [.command, .shift])

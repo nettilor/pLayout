@@ -470,14 +470,20 @@ final class PlateEditor: ObservableObject {
         return true
     }
 
-    /// Turns the plate on its side. Undoable and saved with the document like the other
-    /// display settings, because an export renders the plate as it is shown.
-    func toggleOrientation() {
-        edit("Flip Plate") { layout in layout.transposedView.toggle() }
-        flash(layout.transposedView ? "Rows across, columns down." : "Columns across, rows down.")
+    /// Turns the plate a quarter clockwise, and back again next time. Undoable and saved
+    /// with the document like the other display settings, because an export renders the
+    /// plate as it is shown.
+    func rotatePlate() {
+        let wasTurned = isTurned
+        edit("Turn Plate") { layout in layout.orientation = wasTurned ? .upright : .turned }
+        // Says where A1 went, which is the quickest way to see which way round it is.
+        flash(wasTurned ? "Upright. A1 is top left." : "Turned 90°. A1 is now top right.")
     }
 
-    var isTransposed: Bool { layout.transposedView }
+    /// Quarter turns clockwise for the plate currently shown. Depends on the plate,
+    /// because `.automatic` lies a tall plate down and leaves a wide one alone.
+    var quarterTurns: Int { layout.orientation.quarterTurns(for: format) }
+    var isTurned: Bool { quarterTurns != 0 }
 
     func setPadWellLabels(_ padded: Bool) {
         edit("Well Label Style") { layout in layout.padWellLabels = padded }

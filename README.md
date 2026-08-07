@@ -98,7 +98,7 @@ so deleting a template never affects a layout that used it.
 | `⌘`-drag | Free-hand brush |
 | `⌥`-drag | Erase |
 | click `A` or `1` header | Paint a whole row or column |
-| click the corner | Flip the plate on its side (`⇧⌘L`) |
+| click the corner | Turn the plate 90°, and back again (`⇧⌘L`) |
 | `⌘A` | Select every well |
 | `space` or `F` | Fill the current selection |
 | `⌫` | Clear the active factor in the selection (`⇧⌫` clears every factor) |
@@ -135,15 +135,22 @@ hues, or as a light-to-dark ramp when the factor is numeric.
 
 ## Which way up the plate sits
 
-A real plate is wider than it is tall, but a layout entered as, say, 8 rows of 6 gets
-drawn upright. Clicking the small ⊞ in the corner where the letters and numbers meet
-turns the plate on its side: rows run left to right, columns top to bottom, and the
-letters and numbers swap strips with them. `⇧⌘L` does the same.
+A real plate is wider than it is tall, so that is how a layout opens: a plate entered
+as, say, 8 rows of 6 is laid down for you, while a 96-well plate is already that way
+round and is left alone.
 
-Nothing about the data moves. A1 is still the top-left well and still holds what it
-held; only the arrangement on screen changes. The orientation is saved with the
-document and undoable, because exports and printing render the plate as displayed —
-so a flipped plate exports flipped.
+Clicking the ↻ in the corner where the letters and numbers meet turns the plate a
+quarter clockwise, exactly as picking it up and turning it would, and clicking it again
+turns it back. `⇧⌘L` does the same.
+
+Because it is a real rotation and not a mirror, **A1 moves**: turning clockwise takes it
+from the top-left corner to the top-right. The letters and numbers go with it, running
+backwards along their strip when that is the way they now point — just as they do on a
+plate you have turned. The status bar says where A1 has ended up.
+
+Nothing about the data moves: every well keeps its id and its values, and the file is
+untouched. The orientation is saved with the document and undoable, because exports and
+printing render the plate as displayed — so a turned plate exports turned.
 
 ## Several plates in one file
 

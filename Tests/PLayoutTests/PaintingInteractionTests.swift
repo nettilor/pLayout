@@ -26,7 +26,7 @@ final class PaintingInteractionTests: XCTestCase {
     /// Mirrors what the canvas itself builds, orientation included — otherwise a test
     /// aims at where a header *used* to be once the plate has been flipped.
     private var geometry: PlateGeometry {
-        PlateGeometry(format: editor.format, bounds: canvas.bounds, transposed: editor.isTransposed)
+        PlateGeometry(format: editor.format, bounds: canvas.bounds, quarterTurns: editor.quarterTurns)
     }
 
     /// Converts a point in the (flipped) view to the bottom-left window space AppKit events use.
@@ -121,30 +121,26 @@ final class PaintingInteractionTests: XCTestCase {
         }
     }
 
-    /// The corner flips the plate now. It used to select every well — that moved to ⌘A
+    /// The corner turns the plate now. It used to select every well — that moved to ⌘A
     /// and the Plate menu, and this asserts the corner no longer paints, because an
     /// armed brush plus a select-all is how a whole plate gets overwritten by accident.
-    func testCornerClickFlipsTheViewAndPaintsNothing() {
-        let corner = geometry.cornerRect
-        let point = CGPoint(x: corner.midX, y: corner.midY)
-        XCTAssertFalse(document.layout.transposedView)
+    func testCornerClickTurnsThePlateAndPaintsNothing() {
+        XCTAssertEqual(editor.quarterTurns, 0, "a 96-well plate already lies down")
 
-        canvas.mouseDown(with: event(.leftMouseDown, at: point))
-        canvas.mouseUp(with: event(.leftMouseUp, at: point))
-        XCTAssertTrue(document.layout.transposedView, "the corner did not flip the plate")
+        // The corner moves as the plate turns, so it is fetched again every time.
+        for expected in [1, 0, 1] {
+            let corner = geometry.cornerRect
+            let point = CGPoint(x: corner.midX, y: corner.midY)
+            canvas.mouseDown(with: event(.leftMouseDown, at: point))
+            canvas.mouseUp(with: event(.leftMouseUp, at: point))
+            XCTAssertEqual(editor.quarterTurns, expected, "corner click → \(expected)")
+        }
 
         let factor = document.layout.factors[0]
         XCTAssertEqual(
             document.layout.plates[0].assignedWellCount(factor: factor.id, level: factor.levels[1].id),
             0, "the corner painted"
         )
-
-        // Flipping moves the corner, so it is fetched again rather than reused.
-        let back = geometry.cornerRect
-        let backPoint = CGPoint(x: back.midX, y: back.midY)
-        canvas.mouseDown(with: event(.leftMouseDown, at: backPoint))
-        canvas.mouseUp(with: event(.leftMouseUp, at: backPoint))
-        XCTAssertFalse(document.layout.transposedView, "the corner did not flip back")
     }
 
     func testOptionDragErases() {

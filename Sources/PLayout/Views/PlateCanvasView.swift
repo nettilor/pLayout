@@ -6,11 +6,17 @@ import SwiftUI
 
 struct PlateGeometry {
     let format: PlateFormat
-    /// Drawn on its side: model rows run left-to-right and model columns run top-to-
-    /// bottom, so a plate taller than it is wide can be read the way it is held. Every
-    /// coordinate this type takes or returns stays in *model* space — a well keeps its
-    /// id, its values and its place in the file; only where it lands on screen moves.
-    let transposed: Bool
+    /// Quarter turns clockwise, 0–3 — the plate picked up and turned on the bench.
+    ///
+    /// A *rotation*, deliberately, not a transpose. Swapping the two axes leaves A1 in
+    /// the top-left corner, which looks tidy and is impossible: you cannot reach it by
+    /// turning a plate, only by turning it over and looking through the back. Under a
+    /// real rotation A1 travels round the corners, which is what makes the picture on
+    /// screen match the plate in your hand.
+    ///
+    /// Every coordinate this type takes or returns stays in *model* space — a well keeps
+    /// its id, its values and its place in the file; only where it lands on screen moves.
+    let quarterTurns: Int
     let cell: CGFloat
     let headerW: CGFloat
     let headerH: CGFloat
@@ -23,16 +29,21 @@ struct PlateGeometry {
     /// Not zero: hit-testing divides by this, and 0 would trap on the Int conversion.
     static let minCell: CGFloat = 0.01
 
-    /// The grid as drawn. Everything that measures or hit-tests the plate works in
-    /// these; only the mapping helpers below cross back into model space.
-    var displayRows: Int { transposed ? format.cols : format.rows }
-    var displayCols: Int { transposed ? format.rows : format.cols }
+    /// A quarter or three-quarter turn stands the plate on end; a half turn leaves the
+    /// grid the same shape upside down.
+    var isTurnedOnEnd: Bool { quarterTurns % 2 == 1 }
 
-    init(format: PlateFormat, bounds: CGRect, transposed: Bool = false) {
+    /// The grid as drawn. Everything that measures or hit-tests the plate works in
+    /// these; only the two mapping helpers below cross back into model space.
+    var displayRows: Int { isTurnedOnEnd ? format.cols : format.rows }
+    var displayCols: Int { isTurnedOnEnd ? format.rows : format.cols }
+
+    init(format: PlateFormat, bounds: CGRect, quarterTurns: Int = 0) {
         self.format = format
-        self.transposed = transposed
-        let gridRows = transposed ? format.cols : format.rows
-        let gridCols = transposed ? format.rows : format.cols
+        self.quarterTurns = ((quarterTurns % 4) + 4) % 4
+        let onEnd = self.quarterTurns % 2 == 1
+        let gridRows = onEnd ? format.cols : format.rows
+        let gridCols = onEnd ? format.rows : format.cols
         let pad: CGFloat = 14
         let availableW = max(bounds.width - pad * 2, 1)
         let availableH = max(bounds.height - pad * 2, 1)
@@ -88,17 +99,39 @@ struct PlateGeometry {
                height: headerH + cell * CGFloat(displayRows))
     }
 
-    /// Takes a *model* well and returns where it is drawn. This one swap is the whole
-    /// of the transpose; nothing above the geometry ever sees display coordinates.
+    /// Where a *model* well is drawn. Together with `modelPosition` this pair is the
+    /// whole of the rotation; nothing above the geometry ever sees display coordinates.
+    ///
+    /// Clockwise: the top edge goes to the right edge. So a model row becomes a display
+    /// *column*, counted from the right, and a model column becomes a display row.
+    func displayPosition(row: Int, col: Int) -> (row: Int, col: Int) {
+        switch quarterTurns {
+        case 1: return (row: col, col: format.rows - 1 - row)
+        case 2: return (row: format.rows - 1 - row, col: format.cols - 1 - col)
+        case 3: return (row: format.cols - 1 - col, col: row)
+        default: return (row: row, col: col)
+        }
+    }
+
+    /// The inverse. Hit-testing turns a point into a display cell and then comes back
+    /// through here, so a click always names the well that was drawn under it.
+    func modelPosition(displayRow: Int, displayCol: Int) -> WellPos {
+        switch quarterTurns {
+        case 1: return WellPos(row: format.rows - 1 - displayCol, col: displayRow)
+        case 2: return WellPos(row: format.rows - 1 - displayRow, col: format.cols - 1 - displayCol)
+        case 3: return WellPos(row: displayCol, col: format.cols - 1 - displayRow)
+        default: return WellPos(row: displayRow, col: displayCol)
+        }
+    }
+
     func cellRect(row: Int, col: Int) -> CGRect {
-        let x = transposed ? row : col
-        let y = transposed ? col : row
-        return CGRect(x: originX + CGFloat(x) * cell, y: originY + CGFloat(y) * cell,
+        let p = displayPosition(row: row, col: col)
+        return CGRect(x: originX + CGFloat(p.col) * cell, y: originY + CGFloat(p.row) * cell,
                       width: cell, height: cell)
     }
 
-    /// A rectangle of wells stays a rectangle when transposed, so the two opposite
-    /// corners still bound it.
+    /// A rotation carries opposite corners to opposite corners, so a block of wells is
+    /// still a block and these two still bound it.
     func rect(of range: WellRange) -> CGRect {
         cellRect(row: range.minRow, col: range.minCol)
             .union(cellRect(row: range.maxRow, col: range.maxCol))
@@ -117,15 +150,17 @@ struct PlateGeometry {
                width: headerW, height: cell)
     }
 
-    /// Where a *model* column's header is drawn — along the top normally, down the side
-    /// when transposed. Callers that want to point at "the header for column 3" ask for
-    /// it this way and stay correct in either orientation.
+    /// Where a *model* column's header is drawn: it follows its own cells round, so it
+    /// is on whichever strip those cells now line up with. Callers that want "the header
+    /// for column 3" ask this way and stay correct at every turn.
     func columnHeaderRect(_ col: Int) -> CGRect {
-        transposed ? sideHeaderRect(col) : topHeaderRect(col)
+        let p = displayPosition(row: 0, col: col)
+        return isTurnedOnEnd ? sideHeaderRect(p.row) : topHeaderRect(p.col)
     }
 
     func rowHeaderRect(_ row: Int) -> CGRect {
-        transposed ? topHeaderRect(row) : sideHeaderRect(row)
+        let p = displayPosition(row: row, col: 0)
+        return isTurnedOnEnd ? topHeaderRect(p.col) : sideHeaderRect(p.row)
     }
 
     var cornerRect: CGRect {
@@ -148,33 +183,33 @@ struct PlateGeometry {
         let onGridX = across >= 0 && across < displayCols
         let onGridY = down >= 0 && down < displayRows
         if onGridX && onGridY {
-            return .well(transposed ? WellPos(row: across, col: down) : WellPos(row: down, col: across))
+            return .well(modelPosition(displayRow: down, displayCol: across))
         }
+        // A strip labels whichever axis its cells belong to, which the turn decides.
         if onGridX, point.y >= originY - headerH, point.y < originY {
-            // The top strip selects whichever axis it is currently labelling.
-            return transposed ? .rowHeader(across) : .columnHeader(across)
+            let well = modelPosition(displayRow: 0, displayCol: across)
+            return isTurnedOnEnd ? .rowHeader(well.row) : .columnHeader(well.col)
         }
         if onGridY, point.x >= originX - headerW, point.x < originX {
-            return transposed ? .columnHeader(down) : .rowHeader(down)
+            let well = modelPosition(displayRow: down, displayCol: 0)
+            return isTurnedOnEnd ? .columnHeader(well.col) : .rowHeader(well.row)
         }
         if cornerRect.contains(point) { return .corner }
         return .outside
     }
 
-    /// Clamped lookup so a drag that leaves the plate keeps extending sensibly.
+    /// Clamped lookup so a drag that leaves the plate keeps extending sensibly. Clamping
+    /// happens in display space and is then mapped back, which is what keeps a drag
+    /// running off the right-hand edge extending along the axis that edge belongs to.
     func nearestWell(_ point: CGPoint) -> WellPos {
-        WellPos(row: nearestRow(point), col: nearestColumn(point))
+        let across = min(max(line(point.x, from: originX), 0), displayCols - 1)
+        let down = min(max(line(point.y, from: originY), 0), displayRows - 1)
+        return modelPosition(displayRow: down, displayCol: across)
     }
 
-    func nearestColumn(_ point: CGPoint) -> Int {
-        let raw = transposed ? line(point.y, from: originY) : line(point.x, from: originX)
-        return min(max(raw, 0), format.cols - 1)
-    }
+    func nearestColumn(_ point: CGPoint) -> Int { nearestWell(point).col }
 
-    func nearestRow(_ point: CGPoint) -> Int {
-        let raw = transposed ? line(point.x, from: originX) : line(point.y, from: originY)
-        return min(max(raw, 0), format.rows - 1)
-    }
+    func nearestRow(_ point: CGPoint) -> Int { nearestWell(point).row }
 }
 
 // MARK: - Canvas
@@ -244,7 +279,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     private var geometry: PlateGeometry {
         PlateGeometry(
             format: editor?.format ?? .well96, bounds: bounds,
-            transposed: editor?.layout.transposedView ?? false
+            quarterTurns: editor?.quarterTurns ?? 0
         )
     }
 
@@ -761,35 +796,36 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
             )
         }
 
-        for index in 0..<geo.displayCols {
-            let rect = geo.topHeaderRect(index)
-            if geo.transposed {
-                draw(WellNaming.rowLabel(index), in: rect,
-                     highlighted: selection?.containsRow(index) ?? false)
-            } else {
-                let shown = index % numberStride == 0 || index == 0 ? "\(index + 1)" : ""
-                draw(shown, in: rect, highlighted: selection?.containsCol(index) ?? false)
+        // Each strip is labelled from the model axis its cells belong to, which is what
+        // makes the letters run backwards after a half turn — as they do on a plate you
+        // have turned to face away from you.
+        func label(_ well: WellPos, axisIsRow: Bool, at index: Int) -> (String, Bool) {
+            if axisIsRow {
+                return (WellNaming.rowLabel(well.row), selection?.containsRow(well.row) ?? false)
             }
+            let shown = index % numberStride == 0 || index == 0 ? "\(well.col + 1)" : ""
+            return (shown, selection?.containsCol(well.col) ?? false)
+        }
+
+        for index in 0..<geo.displayCols {
+            let well = geo.modelPosition(displayRow: 0, displayCol: index)
+            let (text, on) = label(well, axisIsRow: geo.isTurnedOnEnd, at: index)
+            draw(text, in: geo.topHeaderRect(index), highlighted: on)
         }
 
         for index in 0..<geo.displayRows {
-            let rect = geo.sideHeaderRect(index)
-            if geo.transposed {
-                let shown = index % numberStride == 0 || index == 0 ? "\(index + 1)" : ""
-                draw(shown, in: rect, highlighted: selection?.containsCol(index) ?? false)
-            } else {
-                draw(WellNaming.rowLabel(index), in: rect,
-                     highlighted: selection?.containsRow(index) ?? false)
-            }
+            let well = geo.modelPosition(displayRow: index, displayCol: 0)
+            let (text, on) = label(well, axisIsRow: !geo.isTurnedOnEnd, at: index)
+            draw(text, in: geo.sideHeaderRect(index), highlighted: on)
         }
 
         drawOrientationCorner(geo: geo)
     }
 
-    /// The corner where the letters and numbers meet, which flips the plate between
-    /// upright and on its side. It carries a glyph because an invisible click target is
-    /// no control at all — and it replaces select-all-on-corner, which lives on ⌘A and
-    /// in the Plate menu.
+    /// The corner where the letters and numbers meet. A click turns the plate a quarter
+    /// clockwise and the next click turns it back. It carries a glyph because an
+    /// invisible click target is no control at all, and it replaces
+    /// select-all-on-corner, which lives on ⌘A and in the Plate menu.
     private func drawOrientationCorner(geo: PlateGeometry) {
         guard !exportMode else { return }
         let rect = geo.cornerRect
@@ -800,30 +836,34 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
             NSBezierPath(roundedRect: rect.insetBy(dx: 1.5, dy: 1.5), xRadius: 3, yRadius: 3).fill()
         }
 
-        // Two nested corner brackets, one upright and one on its side: the same plate,
-        // turned. Drawn rather than set as a symbol so it scales with the header.
         let size = min(rect.width - 8, rect.height - 6, 13)
-        guard size >= 7 else { return }
-        let box = CGRect(x: rect.midX - size / 2, y: rect.midY - size / 2, width: size, height: size)
+        guard size >= 8 else { return }
         let ink = (hoveringCorner ? NSColor.controlAccentColor : NSColor.secondaryLabelColor)
             .withAlphaComponent(hoveringCorner ? 1 : 0.75)
         ink.setStroke()
+        ink.setFill()
 
-        let wide = NSBezierPath(
-            roundedRect: CGRect(x: box.minX, y: box.minY + size * 0.28,
-                                width: size, height: size * 0.44),
-            xRadius: 1.5, yRadius: 1.5
-        )
-        wide.lineWidth = 1.2
-        wide.stroke()
+        // Three quarters of a circle with an arrowhead — a turn, rather than the two
+        // nested rectangles that were here when this control did a transpose. The
+        // picture should say which of the two it is.
+        let radius = size / 2
+        let centre = CGPoint(x: rect.midX, y: rect.midY)
+        let arc = NSBezierPath()
+        arc.appendArc(withCenter: centre, radius: radius, startAngle: 110, endAngle: 20, clockwise: true)
+        arc.lineWidth = 1.4
+        arc.lineCapStyle = .round
+        arc.stroke()
 
-        let tall = NSBezierPath(
-            roundedRect: CGRect(x: box.minX + size * 0.28, y: box.minY,
-                                width: size * 0.44, height: size),
-            xRadius: 1.5, yRadius: 1.5
-        )
-        tall.lineWidth = 1.2
-        tall.stroke()
+        // Arrowhead at the open end, pointing the way the next click will turn it.
+        let tipAngle = 20.0 * .pi / 180
+        let tip = CGPoint(x: centre.x + radius * cos(tipAngle), y: centre.y - radius * sin(tipAngle))
+        let head = NSBezierPath()
+        let wing = max(2.2, size * 0.22)
+        head.move(to: CGPoint(x: tip.x - wing, y: tip.y - wing * 0.35))
+        head.line(to: CGPoint(x: tip.x + wing * 0.5, y: tip.y - wing * 0.1))
+        head.line(to: CGPoint(x: tip.x - wing * 0.2, y: tip.y + wing))
+        head.close()
+        head.fill()
     }
 
     /// Shrinks a condition name to fit its well rather than clipping it, so
@@ -932,7 +972,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
             // anyone looked for it anyway.
             dragKind = .none
             isPaintingDrag = false
-            editor.toggleOrientation()
+            editor.rotatePlate()
             needsDisplay = true
             return
         case .outside:

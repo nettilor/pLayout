@@ -376,7 +376,7 @@ struct ShortcutsCard: View {
         Row(key: "⌘ drag", detail: "Free-hand brush"),
         Row(key: "⌥ drag", detail: "Erase wells"),
         Row(key: "click A / 1", detail: "Paint a whole row or column"),
-        Row(key: "click ⊞ corner", detail: "Flip the plate on its side (⇧⌘L)"),
+        Row(key: "click ↻ corner", detail: "Turn the plate 90°, and back again (⇧⌘L)"),
         Row(key: "space  /  F", detail: "Fill the current selection"),
         Row(key: "⌫", detail: "Clear active factor  (⇧⌫ clears all)"),
         Row(key: "⎋", detail: "Disarm — select without painting"),
