@@ -292,16 +292,44 @@ final class SavedStateTests: XCTestCase {
         }
     }
 
-    func testRevertingToAStateWithADeletedActiveFactorReselects() {
-        editor.saveState()                       // one factor
+    /// A state bookmarks one plate, so reverting it must leave the rest of the document
+    /// alone. Removing a factor added since would strand *other* plates on levels that
+    /// no longer exist — blank wells, with nothing to say why.
+    func testRevertingOnePlateKeepsWhatTheRestOfTheDocumentGained() {
+        editor.saveState()
         editor.addFactor()
-        let second = editor.activeFactorID!
-        editor.revertToLatestState()             // back to one factor
+        let addedFactor = editor.activeFactorID!
+        editor.addPlate()
+        let addedPlate = editor.activePlateID!
 
-        XCTAssertEqual(document.layout.factors.count, 1)
-        XCTAssertNotEqual(editor.activeFactorID, second)
-        XCTAssertEqual(editor.activeFactorID, document.layout.factors[0].id)
-        XCTAssertNotNil(editor.armedLevel, "an armed level should be reselected")
+        editor.activePlateID = document.layout.plates[0].id
+        editor.revertToLatestState()
+
+        XCTAssertEqual(document.layout.factors.count, 2, "reverting one plate dropped a factor")
+        XCTAssertTrue(document.layout.factors.contains { $0.id == addedFactor })
+        XCTAssertTrue(
+            document.layout.plates.contains { $0.id == addedPlate },
+            "reverting one plate deleted another"
+        )
+        XCTAssertNotNil(editor.activeFactor)
+        XCTAssertNotNil(editor.armedLevel, "an armed level should still resolve")
+    }
+
+    /// The other half: a level the state needs and the document has since lost has to
+    /// come back, or the restored wells point at nothing.
+    func testRevertingPutsBackALevelThatWasDeletedSince() {
+        paint([0, 1], 2)
+        editor.saveState()
+        let doomed = factor.levels[2]
+        editor.deleteLevel(doomed.id)
+        XCTAssertNil(levelName(at: 0), "the level should be gone before reverting")
+
+        editor.revertToLatestState()
+        XCTAssertTrue(
+            document.layout.factors[0].levels.contains { $0.id == doomed.id },
+            "the level the state needs was not reinstated"
+        )
+        XCTAssertEqual(levelName(at: 0), doomed.name)
     }
 
     // MARK: - Editor stays consistent across undo and redo
@@ -309,26 +337,36 @@ final class SavedStateTests: XCTestCase {
     /// Regression: reconciling only inside `revertToState` left undo and redo able to
     /// strand the editor on a deleted factor, after which painting wrote into a factor
     /// that no longer existed — invisible on screen, but saved to the file.
-    func testRedoingARevertCannotStrandTheEditorOnADeletedFactor() {
-        editor.saveState()                            // one factor, one plate
+    /// Driven through a real deletion now that reverting is scoped to one plate and no
+    /// longer removes anything. The hazard is unchanged: redo can take away whatever the
+    /// editor is pointing at, and it has to notice.
+    func testRedoingADeletionCannotStrandTheEditorOnAMissingFactor() {
         editor.addFactor()
-        editor.addPlate()
-        let addedFactor = editor.activeFactorID!
-        let addedPlate = editor.activePlateID!
+        let added = editor.activeFactorID!
 
         let undo = freshUndoManager()
-        editor.revertToLatestState()                  // drops the added factor and plate
-        undo.undo()                                   // they come back
-
-        // Selecting them is pure view state, so the redo stack survives.
-        editor.setActiveFactor(addedFactor)
-        editor.activePlateID = addedPlate
-        undo.redo()                                   // and now they are gone again
+        editor.deleteFactor(added)
+        undo.undo()                                   // it comes back
+        editor.setActiveFactor(added)                 // view state, so redo survives
+        undo.redo()                                   // and now it is gone again
 
         XCTAssertNotNil(editor.activeFactor, "active factor must still exist after redo")
+        XCTAssertNotEqual(editor.activeFactorID, added)
+        XCTAssertNotNil(editor.armedLevel, "an armed level must be reselected too")
+    }
+
+    func testRedoingADeletionCannotStrandTheEditorOnAMissingPlate() {
+        editor.addPlate()
+        let added = editor.activePlateID!
+
+        let undo = freshUndoManager()
+        editor.deletePlate(added)
+        undo.undo()
+        editor.activePlateID = added
+        undo.redo()
+
         XCTAssertNotNil(editor.plate, "active plate must still exist after redo")
-        XCTAssertNotEqual(editor.activeFactorID, addedFactor)
-        XCTAssertNotEqual(editor.activePlateID, addedPlate)
+        XCTAssertNotEqual(editor.activePlateID, added)
     }
 
     func testPaintingAfterRedoWritesIntoALiveFactor() {

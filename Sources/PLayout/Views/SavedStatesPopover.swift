@@ -28,10 +28,17 @@ struct SavedStatesPopover: View {
         .frame(width: 330)
     }
 
+    /// Names the plate, because the list only ever shows that plate's states — without
+    /// it, switching plates looks like the states have vanished.
     private var header: some View {
-        HStack {
-            Text("Saved states")
-                .font(.callout.weight(.semibold))
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Saved states")
+                    .font(.callout.weight(.semibold))
+                Text(editor.plate?.name ?? "No plate")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
             Spacer()
             Text("⌥⌘S saves · ⌘Z undoes")
                 .font(.caption2)
@@ -43,9 +50,10 @@ struct SavedStatesPopover: View {
 
     private var empty: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Nothing saved yet.")
+            Text("Nothing saved for \(editor.plate?.name ?? "this plate") yet.")
                 .font(.callout)
-            Text("Save a state before trying a new combination, and you can always come back to it.")
+                .fixedSize(horizontal: false, vertical: true)
+            Text("States belong to one plate. Save one before trying a new combination, and you can always come back to it.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

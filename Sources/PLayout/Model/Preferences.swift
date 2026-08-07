@@ -87,6 +87,33 @@ enum ActiveMarkerStyle: String, Codable, DisplayChoice {
     }
 }
 
+/// The shape a new document draws its wells in. Only the starting point — the sidebar
+/// keeps its own toggle, so a single layout can differ without changing the default.
+enum WellShape: String, Codable, DisplayChoice {
+    case round
+    case square
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .round: return "Round"
+        case .square: return "Square"
+        }
+    }
+
+    var note: String {
+        switch self {
+        case .round:
+            return "Looks like a plate. Ignored while stacked labels are showing — those need the full width of the well."
+        case .square:
+            return "More room for text, and what the stacking modes fall back to anyway."
+        }
+    }
+
+    var isRound: Bool { self == .round }
+}
+
 /// App-wide display settings, shared by every open document and remembered between
 /// launches. Deliberately *not* part of `Layout`: this is how someone likes to look at
 /// a plate, not a property of the experiment, and it should not travel in a `.plate`
@@ -108,9 +135,19 @@ final class Preferences: ObservableObject {
         }
     }
 
+    /// Only read when a document opens: the sidebar toggle is the live control, and a
+    /// preference that reached back into open windows would fight with it.
+    @Published var newDocumentWellShape: WellShape {
+        didSet {
+            guard newDocumentWellShape != oldValue else { return }
+            defaults.set(newDocumentWellShape.rawValue, forKey: Self.wellShapeKey)
+        }
+    }
+
     private let defaults: UserDefaults
     private static let wellTextStyleKey = "wellTextStyle"
     private static let activeMarkerStyleKey = "activeMarkerStyle"
+    private static let wellShapeKey = "newDocumentWellShape"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -120,11 +157,14 @@ final class Preferences: ObservableObject {
             .flatMap(WellTextStyle.init(rawValue:)) ?? .automatic
         activeMarkerStyle = defaults.string(forKey: Self.activeMarkerStyleKey)
             .flatMap(ActiveMarkerStyle.init(rawValue:)) ?? .matchLabel
+        newDocumentWellShape = defaults.string(forKey: Self.wellShapeKey)
+            .flatMap(WellShape.init(rawValue:)) ?? .round
     }
 
     func resetToDefaults() {
         wellTextStyle = .automatic
         activeMarkerStyle = .matchLabel
+        newDocumentWellShape = .round
     }
 }
 

@@ -24,6 +24,10 @@ struct PreferencesView: View {
                         choice("Active marker", selection: $preferences.activeMarkerStyle)
                         note(preferences.activeMarkerStyle.note)
                     }
+                    section("New documents") {
+                        choice("Well shape", selection: $preferences.newDocumentWellShape)
+                        note(preferences.newDocumentWellShape.note)
+                    }
                     // Shown rather than described: what both settings are really about
                     // is how they look across light and dark conditions at once, which
                     // is exactly what a sentence cannot convey.
@@ -44,7 +48,7 @@ struct PreferencesView: View {
             }
             .padding(12)
         }
-        .frame(width: 460, height: 540)
+        .frame(width: 460, height: 620)
     }
 
     private func section(

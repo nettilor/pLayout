@@ -145,6 +145,23 @@ held; only the arrangement on screen changes. The orientation is saved with the
 document and undoable, because exports and printing render the plate as displayed —
 so a flipped plate exports flipped.
 
+## Several plates in one file
+
+The `+` beside the plate tabs adds another plate; the tabs switch between them. A
+click selects a plate and a second click on the same tab renames it — the same rule the
+factor and condition rows follow. Rename is in the tab's context menu too, alongside
+duplicate and delete.
+
+**Saved states belong to a plate, not to the file.** The bookmark saves the plate you
+are looking at, the list shows only that plate's states, and reverting puts only that
+plate back. Switching plates switches the list, and the bookmark fills or empties to
+match the plate you moved to.
+
+Reverting deliberately adds to the factor list rather than replacing it: a state can
+put back a condition that has since been deleted, but it will not remove a factor added
+afterwards, because another plate may already be painted with it. States saved before
+this was true still restore the whole document, and say so in their subtitle.
+
 ## Settings (`⌘,`)
 
 Two things about how a plate is drawn are a matter of taste rather than of the
@@ -164,8 +181,13 @@ condition's colour, because in **All** the well is already flooded with it. *Mat
 label* draws a plain marker in the text colour; *Darker shade of the well* keeps the
 condition's own colour taken far enough down to stand against it.
 
-Both are shown in a live preview across light and dark conditions, which is the
-quickest way to see what each one costs.
+**Well shape** — whether a new document starts with round or square wells. Only the
+starting point: the sidebar keeps its own *Round wells* checkbox, so one layout can
+differ without changing the default, and changing the default leaves open windows
+alone.
+
+The first two are shown in a live preview across light and dark conditions, which is
+the quickest way to see what each one costs.
 
 ## Excel round-trip
 

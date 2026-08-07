@@ -26,6 +26,19 @@ final class PreferencesTests: XCTestCase {
         let preferences = Preferences(defaults: defaults)
         XCTAssertEqual(preferences.wellTextStyle, .automatic)
         XCTAssertEqual(preferences.activeMarkerStyle, .matchLabel)
+        XCTAssertEqual(preferences.newDocumentWellShape, .round)
+    }
+
+    func testTheWellShapeDefaultIsRememberedAndReadable() {
+        let preferences = Preferences(defaults: defaults)
+        preferences.newDocumentWellShape = .square
+        XCTAssertFalse(preferences.newDocumentWellShape.isRound)
+
+        let reopened = Preferences(defaults: defaults)
+        XCTAssertEqual(reopened.newDocumentWellShape, .square)
+
+        defaults.set("hexagonal", forKey: "newDocumentWellShape")
+        XCTAssertEqual(Preferences(defaults: defaults).newDocumentWellShape, .round)
     }
 
     func testChoicesSurviveARelaunch() {
@@ -52,9 +65,26 @@ final class PreferencesTests: XCTestCase {
         let preferences = Preferences(defaults: defaults)
         preferences.wellTextStyle = .alwaysBlack
         preferences.activeMarkerStyle = .deeperShade
+        preferences.newDocumentWellShape = .square
         preferences.resetToDefaults()
         XCTAssertEqual(preferences.wellTextStyle, .automatic)
         XCTAssertEqual(preferences.activeMarkerStyle, .matchLabel)
+        XCTAssertEqual(preferences.newDocumentWellShape, .round)
+    }
+
+    /// Renaming a plate has an editor path but had no way to reach it — the tab now
+    /// renames on a second click. This is the part of that worth pinning: the model
+    /// refuses a blank name rather than leaving a tab with no label.
+    func testRenamingAPlateTakesAndRefusesTheRightThings() {
+        let document = PlateDocument()
+        let editor = PlateEditor(document: document)
+        let plateID = editor.activePlateID!
+
+        editor.renamePlate(plateID, to: "  Screen A  ")
+        XCTAssertEqual(document.layout.plates[0].name, "Screen A", "the name was not trimmed")
+
+        editor.renamePlate(plateID, to: "   ")
+        XCTAssertEqual(document.layout.plates[0].name, "Screen A", "a blank name was accepted")
     }
 
     // MARK: - What the styles actually produce

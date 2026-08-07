@@ -8,6 +8,8 @@ struct ContentView: View {
 
     @State private var showingShortcuts = false
     @State private var showingStates = false
+    @State private var renamingPlateID: UUID?
+    @State private var plateClicks = RowClickTracker()
 
     init(document: PlateDocument) {
         self.document = document
@@ -71,36 +73,61 @@ struct ContentView: View {
         .background(.bar)
     }
 
+    /// A click selects the plate, a quick second click on the same one renames it — the
+    /// same rule the sidebar rows follow, timed by `RowClickTracker` rather than built
+    /// from a second tap gesture, which would stall every single click for the
+    /// double-click interval.
     private func plateChip(_ plate: Plate) -> some View {
         let isActive = plate.id == editor.activePlateID
-        return Button {
-            editor.activePlateID = plate.id
-            editor.select(WellRange(single: WellPos(row: 0, col: 0)))
-        } label: {
-            HStack(spacing: 5) {
-                Text(plate.name)
-                    .font(.system(size: 11, weight: isActive ? .semibold : .regular))
-                Text(editor.formatDisplayName(plate.format))
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 3)
-            .background(
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(isActive ? Color.accentColor.opacity(0.16) : Color.secondary.opacity(0.09))
+        return HStack(spacing: 5) {
+            EditableName(
+                text: plate.name,
+                placeholder: "Plate",
+                font: .system(size: 11, weight: isActive ? .semibold : .regular),
+                isEditing: Binding(
+                    get: { renamingPlateID == plate.id },
+                    set: { if !$0 { renamingPlateID = nil } }
+                ),
+                onCommit: { editor.renamePlate(plate.id, to: $0) }
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 5)
-                    .strokeBorder(isActive ? Color.accentColor.opacity(0.5) : .clear, lineWidth: 1)
-            )
+            .fixedSize(horizontal: renamingPlateID != plate.id, vertical: false)
+            .frame(minWidth: renamingPlateID == plate.id ? 70 : nil)
+            Text(editor.formatDisplayName(plate.format))
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 3)
+        .background(
+            RoundedRectangle(cornerRadius: 5)
+                .fill(isActive ? Color.accentColor.opacity(0.16) : Color.secondary.opacity(0.09))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 5)
+                .strokeBorder(isActive ? Color.accentColor.opacity(0.5) : .clear, lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            let renaming = plateClicks.isDoubleClick(on: plate.id)
+            editor.activePlateID = plate.id
+            if renaming {
+                renamingPlateID = plate.id
+            } else {
+                renamingPlateID = nil
+                editor.select(WellRange(single: WellPos(row: 0, col: 0)))
+            }
+        }
+        .help("Double-click to rename")
         .contextMenu {
+            Button("Rename Plate") {
+                editor.activePlateID = plate.id
+                renamingPlateID = plate.id
+            }
             Button("Duplicate Plate") {
                 editor.activePlateID = plate.id
                 editor.duplicatePlate()
             }
+            Divider()
             Button("Delete Plate", role: .destructive) { editor.deletePlate(plate.id) }
                 .disabled(editor.layout.plates.count <= 1)
         }

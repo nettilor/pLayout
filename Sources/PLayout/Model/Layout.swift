@@ -115,15 +115,47 @@ struct LayoutSnapshot: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
     var name: String
     var savedAt: Date
+    /// The plate this state belongs to. A state is a bookmark of *one* plate's layout,
+    /// so switching plates shows a different list. nil means a state written before
+    /// that was true, which still restores the whole document.
+    var plateID: UUID?
     var factors: [Factor]
     var plates: [Plate]
 
-    init(id: UUID = UUID(), name: String, savedAt: Date, factors: [Factor], plates: [Plate]) {
+    init(
+        id: UUID = UUID(), name: String, savedAt: Date, plateID: UUID? = nil,
+        factors: [Factor], plates: [Plate]
+    ) {
         self.id = id
         self.name = name
         self.savedAt = savedAt
+        self.plateID = plateID
         self.factors = factors
         self.plates = plates
+    }
+
+    /// Hand-written for the same reason `Layout`'s is: the synthesized decoder ignores
+    /// stored-property defaults, so adding `plateID` would make every document that
+    /// already has saved states fail to open with `keyNotFound`.
+    ///
+    /// A state from before this field that holds exactly one plate is adopted by it —
+    /// which is every single-plate document, so those keep working per-plate rather
+    /// than becoming permanent whole-document states.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? "State"
+        savedAt = try container.decodeIfPresent(Date.self, forKey: .savedAt) ?? Date(timeIntervalSince1970: 0)
+        factors = try container.decodeIfPresent([Factor].self, forKey: .factors) ?? []
+        plates = try container.decodeIfPresent([Plate].self, forKey: .plates) ?? []
+        plateID = try container.decodeIfPresent(UUID.self, forKey: .plateID)
+            ?? (plates.count == 1 ? plates[0].id : nil)
+    }
+
+    /// True when this state belongs to the given plate, or predates per-plate states
+    /// and therefore belongs to all of them.
+    func belongs(to plateID: UUID?) -> Bool {
+        self.plateID == nil || self.plateID == plateID
     }
 }
 
@@ -347,30 +379,74 @@ struct Layout: Codable, Hashable {
 
     // MARK: - Saved states
 
-    /// Bookmarks the design as it stands. Returns the number of old states dropped
-    /// to stay inside `maxSnapshots`.
+    /// Every state saved for one plate, oldest first.
+    func snapshots(for plateID: UUID?) -> [LayoutSnapshot] {
+        snapshots.filter { $0.belongs(to: plateID) }
+    }
+
+    /// Bookmarks one plate as it stands. Returns the number of old states dropped to
+    /// stay inside `maxSnapshots`.
+    ///
+    /// The factors go in alongside it because a plate's wells are meaningless without
+    /// the levels they point at — but only this plate's own wells are recorded, so a
+    /// state for Plate 1 can never put Plate 2 back.
     @discardableResult
-    mutating func captureSnapshot(at date: Date) -> Int {
-        let used = Set(snapshots.map(\.name))
-        var n = snapshots.count + 1
+    mutating func captureSnapshot(at date: Date, plate plateID: UUID) -> Int {
+        guard let plate = plates.first(where: { $0.id == plateID }) else { return 0 }
+        // Numbered within the plate, since that is the list it will appear in.
+        let used = Set(snapshots(for: plateID).map(\.name))
+        var n = snapshots(for: plateID).count + 1
         while used.contains("State \(n)") { n += 1 }
 
         snapshots.append(
-            LayoutSnapshot(name: "State \(n)", savedAt: date, factors: factors, plates: plates)
+            LayoutSnapshot(
+                name: "State \(n)", savedAt: date, plateID: plateID,
+                factors: factors, plates: [plate]
+            )
         )
         let excess = max(0, snapshots.count - Self.maxSnapshots)
         if excess > 0 { snapshots.removeFirst(excess) }
         return excess
     }
 
-    /// Puts the design back to a saved state. Display settings and the saved-state
-    /// list itself are left alone — reverting should not also change how you are
-    /// looking at the plate, or throw away your other bookmarks.
+    /// Puts one plate back to a saved state. Display settings and the saved-state list
+    /// itself are left alone — reverting should not also change how you are looking at
+    /// the plate, or throw away your other bookmarks.
     mutating func restoreSnapshot(_ id: UUID) -> Bool {
         guard let snapshot = snapshots.first(where: { $0.id == id }) else { return false }
-        factors = snapshot.factors
-        plates = snapshot.plates
+        reinstateFactors(from: snapshot)
+
+        guard let plateID = snapshot.plateID else {
+            // Written before states were per-plate, so it still means the whole document.
+            plates = snapshot.plates
+            return true
+        }
+        guard let saved = snapshot.plates.first(where: { $0.id == plateID }) else { return false }
+        if let index = plates.firstIndex(where: { $0.id == plateID }) {
+            plates[index] = saved
+        } else {
+            plates.append(saved)
+        }
         return true
+    }
+
+    /// Adds back the factors and levels this state needs and the document has since
+    /// lost, without removing anything.
+    ///
+    /// Deliberately a merge and not a replacement. A state now covers one plate, so
+    /// reverting it must not undo factor edits made *for another plate* — doing that
+    /// would strand the other plate's wells on levels that no longer exist, which shows
+    /// up as blank wells rather than as an error.
+    private mutating func reinstateFactors(from snapshot: LayoutSnapshot) {
+        for saved in snapshot.factors {
+            guard let index = factors.firstIndex(where: { $0.id == saved.id }) else {
+                factors.append(saved)
+                continue
+            }
+            for level in saved.levels where !factors[index].levels.contains(where: { $0.id == level.id }) {
+                factors[index].levels.append(level)
+            }
+        }
     }
 
     mutating func renameSnapshot(_ id: UUID, to newName: String) {
@@ -383,10 +459,15 @@ struct Layout: Codable, Hashable {
         snapshots.removeAll { $0.id == id }
     }
 
-    /// The saved state the design currently matches, if any — what tells the toolbar
+    /// The saved state this plate currently matches, if any — what tells the toolbar
     /// whether to show a filled bookmark. The newest match wins.
-    func snapshotMatchingCurrentDesign() -> LayoutSnapshot? {
-        snapshots.last { $0.factors == factors && $0.plates == plates }
+    ///
+    /// Only the plate is compared, not the factors. A state governs one plate's wells,
+    /// so renaming a level elsewhere should not quietly un-fill the bookmark on a plate
+    /// whose layout has not moved at all.
+    func snapshotMatching(plate plateID: UUID?) -> LayoutSnapshot? {
+        guard let plateID, let plate = plates.first(where: { $0.id == plateID }) else { return nil }
+        return snapshots.last { $0.plateID == plateID && $0.plates.first == plate }
     }
 
     /// Unique factor name so exported spreadsheet columns never collide.

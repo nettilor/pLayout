@@ -19,7 +19,9 @@ final class PlateEditor: ObservableObject {
     @Published var selection: WellRange? = WellRange(single: WellPos(row: 0, col: 0))
     @Published var hovered: WellPos?
     @Published var showSecondaryFactors = true
-    @Published var roundWells = true
+    /// Seeded from Preferences when the document opens; the sidebar toggle drives it
+    /// afterwards, so changing the default never disturbs a window already up.
+    @Published var roundWells = Preferences.shared.newDocumentWellShape.isRound
     @Published var transientMessage: String = ""
     /// Set by the menu bar; ContentView presents the sheets off these.
     @Published var showingSeriesSheet = false
@@ -64,6 +66,15 @@ final class PlateEditor: ObservableObject {
             .sink { [weak self] updated in
                 self?.refreshSavedStateMatch(in: updated)
                 self?.reconcileTargets(in: updated)
+            }
+            .store(in: &cancellables)
+        // A state bookmarks one plate, so the filled bookmark changes when the plate
+        // does even though the document has not. `@Published` fires during `willSet`,
+        // so the incoming id is used rather than the property.
+        $activePlateID
+            .sink { [weak self] id in
+                guard let self else { return }
+                self.refreshSavedStateMatch(in: self.layout, plate: id)
             }
             .store(in: &cancellables)
     }
@@ -514,10 +525,12 @@ final class PlateEditor: ObservableObject {
 
     // MARK: - Saved states
 
-    var savedStates: [LayoutSnapshot] { layout.snapshots }
-    var hasSavedStates: Bool { !layout.snapshots.isEmpty }
+    /// A state bookmarks one plate, so every list here is scoped to the active one.
+    /// Switching plates shows that plate's own history and nothing else.
+    var savedStates: [LayoutSnapshot] { layout.snapshots(for: activePlateID) }
+    var hasSavedStates: Bool { !savedStates.isEmpty }
     /// Newest first, which is the order the revert menu should offer them in.
-    var savedStatesNewestFirst: [LayoutSnapshot] { layout.snapshots.reversed() }
+    var savedStatesNewestFirst: [LayoutSnapshot] { savedStates.reversed() }
 
     private static let stateTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -530,35 +543,44 @@ final class PlateEditor: ObservableObject {
         "\(state.name)  ·  \(Self.stateTimeFormatter.string(from: state.savedAt))"
     }
 
-    /// "Saved 14:32 · 96-well · 3 factors" — enough to tell two states apart.
+    /// "Saved 14:32 · 96-well · 42 wells filled" — enough to tell two states apart.
     func subtitle(for state: LayoutSnapshot) -> String {
         var parts = ["Saved \(Self.stateTimeFormatter.string(from: state.savedAt))"]
         if let plate = state.plates.first {
             parts.append(PlateTemplateStore.shared.displayName(for: plate.format))
+            let filled = (0..<plate.format.wellCount).count { well in
+                state.factors.contains { plate.levelID(factor: $0.id, well: well) != nil }
+            }
+            parts.append("\(filled) well\(filled == 1 ? "" : "s") filled")
         }
-        if state.plates.count > 1 { parts.append("\(state.plates.count) plates") }
-        parts.append("\(state.factors.count) factor\(state.factors.count == 1 ? "" : "s")")
+        // Only the ones written before states were per-plate carry more than one.
+        if state.plateID == nil, state.plates.count > 1 {
+            parts.append("whole document, \(state.plates.count) plates")
+        }
         return parts.joined(separator: "  ·  ")
     }
 
     /// Every one of these goes through `edit`, so saving, reverting, renaming and
     /// deleting are all ordinary undoable steps — a mis-click costs one ⌘Z.
     func saveState() {
-        // Saving the same design twice would just clutter the list.
-        if let existing = layout.snapshotMatchingCurrentDesign() {
-            flash("This layout is already saved as \(existing.name).")
+        guard let plateID = activePlateID, let plate else {
+            flash("No plate to save.")
+            return
+        }
+        // Saving the same layout twice would just clutter the list.
+        if let existing = layout.snapshotMatching(plate: plateID) {
+            flash("\(plate.name) is already saved as \(existing.name).")
             return
         }
         var dropped = 0
         let now = Date()
         edit("Save State") { layout in
-            dropped = layout.captureSnapshot(at: now)
+            dropped = layout.captureSnapshot(at: now, plate: plateID)
         }
-        let count = layout.snapshots.count
         flash(
             dropped > 0
-                ? "Saved. Keeping the \(count) most recent states."
-                : "Saved \(layout.snapshots.last?.name ?? "state"). ⌘Z undoes this."
+                ? "Saved. Keeping the \(layout.snapshots.count) most recent states."
+                : "Saved \(layout.snapshots.last?.name ?? "state") for \(plate.name). ⌘Z undoes this."
         )
     }
 
@@ -573,8 +595,8 @@ final class PlateEditor: ObservableObject {
     }
 
     func revertToLatestState() {
-        guard let latest = layout.snapshots.last else {
-            flash("No saved states yet — use the bookmark button first.")
+        guard let latest = savedStates.last else {
+            flash("No saved states for \(plate?.name ?? "this plate") yet — use the bookmark button first.")
             return
         }
         revertToState(latest.id)
@@ -597,8 +619,8 @@ final class PlateEditor: ObservableObject {
     /// Recomputed whenever the document changes rather than on every redraw: the
     /// comparison walks every well of every plate, which is far too much work to do
     /// inside a SwiftUI body evaluation.
-    private func refreshSavedStateMatch(in layout: Layout) {
-        let match = layout.snapshotMatchingCurrentDesign()?.id
+    private func refreshSavedStateMatch(in layout: Layout, plate plateID: UUID? = nil) {
+        let match = layout.snapshotMatching(plate: plateID ?? activePlateID)?.id
         if match != matchingSavedStateID { matchingSavedStateID = match }
     }
 
