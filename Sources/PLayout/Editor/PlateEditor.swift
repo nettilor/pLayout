@@ -28,6 +28,10 @@ final class PlateEditor: ObservableObject {
     /// there is no single armed condition while several rows are selected.
     @Published var multiSelectedFactorIDs: Set<UUID> = []
     @Published var multiSelectedLevelIDs: Set<UUID> = []
+    /// The condition whose sidebar row the mouse is over: every other well dims so
+    /// the plate itself answers "where is this?". Transient — never saved, never
+    /// exported — which is why it lives here and not in the document.
+    @Published var spotlightLevelID: UUID?
     @Published var hovered: WellPos?
     @Published var showSecondaryFactors = true
     /// Seeded from Preferences when the document opens; the sidebar toggle drives it
@@ -414,6 +418,7 @@ final class PlateEditor: ObservableObject {
     func setActiveFactor(_ id: UUID) {
         leaveOverview()
         exitMultiSelection()
+        spotlightLevelID = nil
         activeFactorID = id
         armedLevelID = layout.factor(id: id)?.levels.first?.id
     }
@@ -843,6 +848,12 @@ final class PlateEditor: ObservableObject {
         if let plate = layout.plates.first(where: { $0.id == activePlateID }) {
             selection = selection?.clamped(to: plate.format)
             customWells = clippingCustomWells(to: plate.format)
+        }
+        // A hover spotlight is only meaningful over a condition the active factor
+        // still has; undo, redo or a delete can take that condition away mid-hover.
+        if let spotlight = spotlightLevelID,
+           layout.factors.first(where: { $0.id == activeFactorID })?.level(id: spotlight) == nil {
+            spotlightLevelID = nil
         }
         // Undo and redo can delete ⌘-selected rows out from under the sets; a set
         // pruned below two members is no longer a multi-selection at all.

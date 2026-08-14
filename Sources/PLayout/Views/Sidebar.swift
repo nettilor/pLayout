@@ -227,6 +227,16 @@ struct Sidebar: View {
         }
         .padding(.vertical, 1)
         .contentShape(Rectangle())
+        .onHover { hovering in
+            // Spotlight: while the mouse rests on a condition, the plate dims every
+            // well that is not it. Cleared only if this row still owns the spotlight,
+            // or rapid moves down the list would clear a neighbour's.
+            if hovering {
+                editor.spotlightLevelID = level.id
+            } else if editor.spotlightLevelID == level.id {
+                editor.spotlightLevelID = nil
+            }
+        }
         .onTapGesture {
             if NSApp.currentEvent?.modifierFlags.contains(.command) == true {
                 editor.toggleLevelInMultiSelection(level.id)

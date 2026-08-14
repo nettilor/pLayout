@@ -163,6 +163,53 @@ final class RenderPreviewTests: XCTestCase {
         XCTAssertNotEqual(try sample(row: 5, col: 8), try sample(row: 5, col: 0))
     }
 
+    /// Spotlighting a condition dims every well that is not it, and leaves the
+    /// condition's own wells exactly as they were — pinned at the pixel, against
+    /// a render of the same plate with no spotlight.
+    func testSpotlightDimsEveryOtherWellAndOnlyThose() throws {
+        func rendered(spotlightDMSO: Bool) throws -> NSBitmapImageRep {
+            let editor = demoEditor()
+            editor.selection = nil
+            if spotlightDMSO {
+                editor.spotlightLevelID = editor.activeFactor?.levels.first?.id   // DMSO, column 1
+            }
+            let frame = NSRect(x: 0, y: 0, width: 940, height: 560)
+            let window = NSWindow(
+                contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false
+            )
+            let canvas = PlateCanvasView(frame: frame)
+            canvas.attach(editor: editor)
+            window.contentView = canvas
+            canvas.layoutSubtreeIfNeeded()
+            // Not pngData(): that renders in export mode, where transient view state
+            // like the spotlight is deliberately absent. This draws the screen render.
+            let rep = try XCTUnwrap(canvas.bitmapImageRepForCachingDisplay(in: frame))
+            canvas.cacheDisplay(in: frame, to: rep)
+            return rep
+        }
+
+        let plain = try rendered(spotlightDMSO: false)
+        let spotlit = try rendered(spotlightDMSO: true)
+        let frame = NSRect(x: 0, y: 0, width: 940, height: 560)
+        let geo = PlateGeometry(format: .well96, bounds: frame)
+        func sample(_ rep: NSBitmapImageRep, row: Int, col: Int) throws -> String {
+            let scale = CGFloat(rep.pixelsWide) / frame.width
+            let rect = geo.cellRect(row: row, col: col)
+            return try XCTUnwrap(
+                rep.colorAt(x: Int(rect.midX * scale), y: Int((rect.midY - geo.cell * 0.25) * scale))
+            ).hexString
+        }
+
+        XCTAssertEqual(
+            try sample(plain, row: 5, col: 0), try sample(spotlit, row: 5, col: 0),
+            "the spotlighted condition's own wells stay exactly as they were"
+        )
+        XCTAssertNotEqual(
+            try sample(plain, row: 5, col: 2), try sample(spotlit, row: 5, col: 2),
+            "every other well dims"
+        )
+    }
+
     /// Overview is the stacked pills on an empty-well backdrop, so a chosen
     /// empty-well colour is that backdrop too: an Overview tile must match an
     /// empty well pixel-for-pixel, and both must differ from the default.

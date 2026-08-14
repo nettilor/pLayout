@@ -56,7 +56,9 @@ In the sidebar, a **single click** on a factor or condition selects it — anywh
 the row, including the name — and a **double click** on the name renames it. Escape
 abandons a rename, Return or clicking away keeps it. A **`⌘`-click** selects several
 rows at once for deleting together (right-click → Delete); painting stays off until
-a single row is selected again.
+a single row is selected again. **Resting the mouse on a condition row spotlights
+it** — every other well dims, so finding one condition on a 384 or 1536 takes a
+glance rather than a search.
 
 ### How much each well shows
 

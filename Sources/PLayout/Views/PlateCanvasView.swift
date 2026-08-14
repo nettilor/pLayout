@@ -489,6 +489,21 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
 
         guard !exportMode else { return }
 
+        // Spotlight: hovering a condition row in the sidebar dims every well that is
+        // not that condition, so a dense plate answers "where is this?" by itself.
+        // Transient view state, drawn past the export guard on purpose.
+        if let spotlight = editor.spotlightLevelID, let factorID = editor.activeFactorID,
+           let plate = editor.plate {
+            NSColor.textBackgroundColor.withAlphaComponent(0.8).setFill()
+            for row in 0..<format.rows {
+                for col in 0..<format.cols {
+                    let index = format.index(row: row, col: col)
+                    guard plate.levelID(factor: factorID, well: index) != spotlight else { continue }
+                    geo.cellRect(row: row, col: col).fill()
+                }
+            }
+        }
+
         let accent = NSColor.controlAccentColor
         if let customSelection {
             // Discontiguous wells each get the rectangle treatment on their own —
