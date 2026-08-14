@@ -12,83 +12,39 @@ struct PreferencesView: View {
     // with its label an inch away on the left; `.fixedSize()` to pull it back turns the
     // radio group horizontal and blows the window's width out. A `GroupBox` gives the
     // same look with none of that.
+    // Tabs, since the seventh section arrived: a single column had grown past the
+    // height of a 13" screen. The preview sits *below* the tabs rather than in
+    // one, because every tab changes something it shows — and a preview below
+    // the fold might as well not exist.
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    section("Well labels") {
-                        choice("Text colour", selection: $preferences.wellTextStyle)
-                        note(preferences.wellTextStyle.note)
-                    }
-                    section("Factor being painted") {
-                        choice("Active marker", selection: $preferences.activeMarkerStyle)
-                        note(preferences.activeMarkerStyle.note)
-                    }
-                    section("New documents") {
-                        choice("Well shape", selection: $preferences.newDocumentWellShape)
-                        note(preferences.newDocumentWellShape.note)
-                    }
-                    section("Empty wells") {
-                        HStack(spacing: 10) {
-                            ColorPicker("", selection: emptyWellColor, supportsOpacity: false)
-                                .labelsHidden()
-                            Text("Background of wells with no value")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Button("Reset to Default") { preferences.emptyWellColorHex = nil }
-                                .disabled(preferences.emptyWellColorHex == nil)
-                        }
-                        note(preferences.emptyWellColorHex == nil
-                            ? "The default follows light and dark mode."
-                            : "A chosen colour is used as it is, everywhere — light mode, dark mode, Overview's backdrop, exports and print.")
-                    }
-                    section("Plate text") {
-                        HStack(spacing: 10) {
-                            Text("Font")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                            Picker("", selection: $preferences.canvasFontFamily) {
-                                Text("System").tag(String?.none)
-                                Divider()
-                                ForEach(Self.fontFamilies, id: \.self) { family in
-                                    Text(family).tag(String?.some(family))
-                                }
-                            }
-                            .labelsHidden()
-                        }
-                        HStack(spacing: 10) {
-                            Text("Size")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                            Slider(value: $preferences.canvasFontScale, in: 0.7...1.8, step: 0.05)
-                            Text("\(Int((preferences.canvasFontScale * 100).rounded())) %")
-                                .font(.callout.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                                .frame(width: 44, alignment: .trailing)
-                        }
-                        note("Applies to the plate — wells, headers and the line key — and travels into exports and print. The window's own controls keep the system font.")
-                    }
-                    section("New conditions") {
-                        choice("Colours", selection: $preferences.newConditionColors)
-                        note(preferences.newConditionColors.note)
-                    }
-                    // Shown rather than described: what both settings are really about
-                    // is how they look across light and dark conditions at once, which
-                    // is exactly what a sentence cannot convey.
-                    section("Preview") {
-                        WellPreview(
-                            textStyle: preferences.wellTextStyle,
-                            markerStyle: preferences.activeMarkerStyle,
-                            customEmpty: preferences.customEmptyWellColor,
-                            labelFont: preferences.canvasFont(
-                                ofSize: 11 * CGFloat(preferences.canvasFontScale), weight: .semibold
-                            )
-                        )
-                    }
-                }
-                .padding(20)
+            TabView {
+                displayTab
+                    .tabItem { Label("Display", systemImage: "square.grid.3x3") }
+                coloursTab
+                    .tabItem { Label("Colours", systemImage: "paintpalette") }
+                typeTab
+                    .tabItem { Label("Plate Text", systemImage: "textformat") }
             }
+            .padding([.horizontal, .top], 14)
+
+            // Shown rather than described: what these settings are really about is
+            // how they look across light and dark conditions at once, which is
+            // exactly what a sentence cannot convey.
+            VStack(alignment: .leading, spacing: 6) {
+                section("Preview") {
+                    WellPreview(
+                        textStyle: preferences.wellTextStyle,
+                        markerStyle: preferences.activeMarkerStyle,
+                        customEmpty: preferences.customEmptyWellColor,
+                        labelFont: preferences.canvasFont(
+                            ofSize: 11 * CGFloat(preferences.canvasFontScale), weight: .semibold
+                        )
+                    )
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
 
             Divider()
             HStack {
@@ -97,7 +53,89 @@ struct PreferencesView: View {
             }
             .padding(12)
         }
-        .frame(width: 460, height: 930)
+        .frame(width: 460, height: 660)
+    }
+
+    private var displayTab: some View {
+        tabBody {
+            section("Well labels") {
+                choice("Text colour", selection: $preferences.wellTextStyle)
+                note(preferences.wellTextStyle.note)
+            }
+            section("Factor being painted") {
+                choice("Active marker", selection: $preferences.activeMarkerStyle)
+                note(preferences.activeMarkerStyle.note)
+            }
+            section("New documents") {
+                choice("Well shape", selection: $preferences.newDocumentWellShape)
+                note(preferences.newDocumentWellShape.note)
+            }
+        }
+    }
+
+    private var coloursTab: some View {
+        tabBody {
+            section("New conditions") {
+                choice("Colours", selection: $preferences.newConditionColors)
+                note(preferences.newConditionColors.note)
+            }
+            section("Empty wells") {
+                HStack(spacing: 10) {
+                    ColorPicker("", selection: emptyWellColor, supportsOpacity: false)
+                        .labelsHidden()
+                    Text("Background of wells with no value")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Reset to Default") { preferences.emptyWellColorHex = nil }
+                        .disabled(preferences.emptyWellColorHex == nil)
+                }
+                note(preferences.emptyWellColorHex == nil
+                    ? "The default follows light and dark mode."
+                    : "A chosen colour is used as it is, everywhere — light mode, dark mode, Overview's backdrop, exports and print.")
+            }
+        }
+    }
+
+    private var typeTab: some View {
+        tabBody {
+            section("Plate text") {
+                HStack(spacing: 10) {
+                    Text("Font")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Picker("", selection: $preferences.canvasFontFamily) {
+                        Text("System").tag(String?.none)
+                        Divider()
+                        ForEach(Self.fontFamilies, id: \.self) { family in
+                            Text(family).tag(String?.some(family))
+                        }
+                    }
+                    .labelsHidden()
+                }
+                HStack(spacing: 10) {
+                    Text("Size")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Slider(value: $preferences.canvasFontScale, in: 0.7...1.8, step: 0.05)
+                    Text("\(Int((preferences.canvasFontScale * 100).rounded())) %")
+                        .font(.callout.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, alignment: .trailing)
+                }
+                note("Applies to the plate — wells, headers and the line key — and travels into exports and print. The window's own controls keep the system font.")
+            }
+        }
+    }
+
+    /// A tab is its sections in the same column the single-page window used —
+    /// scrolling as a safety net, never as the design.
+    private func tabBody(@ViewBuilder _ content: () -> some View) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18, content: content)
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     private static let fontFamilies = NSFontManager.shared.availableFontFamilies
