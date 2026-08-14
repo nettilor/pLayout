@@ -278,6 +278,10 @@ pasted block still has its row/column headers, they are detected and stripped.
   named in the menu so there is no guessing which one that is. Both choices are
   remembered for the next export; a single-plate document hides the control,
   since it would change nothing.
+
+  A third option adds a **one-cell map** per plate: every factor's value for the
+  well joined into a single string — `Side+CpG+LN+OVA` — with a separator of
+  your choosing (blank means `+`). Handy for tools that want one label per well.
 - **Tidy CSV (`⇧⌘E`)** — just the one-row-per-well table.
 - **Plate image** — PNG or vector PDF of the plate for a lab notebook or figure.
 - **Print (`⌘P`)** — the plate exactly as displayed, scaled to fill one page. The
@@ -323,7 +327,7 @@ counts, to guard against plate position effects.
 
 ## Imaging positions
 
-**XY Position Fill** (Plate menu, or `⇧⌘Y`) numbers wells the way a Keyence
+**XY Position Fill** (toolbar, Plate menu, or `⇧⌘Y`) numbers wells the way a Keyence
 microscope names its imaging positions: an **XY** factor whose levels run
 `XY01`, `XY02`, … in the order the stage will visit them — across columns, down
 rows, or serpentine, walking the plate **as it is displayed**, so a turned plate

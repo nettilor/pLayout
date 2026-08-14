@@ -353,6 +353,55 @@ final class WorkbookTests: XCTestCase {
         return layout
     }
 
+    /// Unzips a workbook into a scratch directory the caller can inspect.
+    private func extract(_ data: Data) throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("plate-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("layout.xlsx")
+        try data.write(to: file)
+        let unzip = Process()
+        unzip.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+        unzip.arguments = ["-q", "-o", file.path, "-d", directory.path]
+        try unzip.run()
+        unzip.waitUntilExit()
+        XCTAssertEqual(unzip.terminationStatus, 0, "unzip rejected the workbook")
+        return directory
+    }
+
+    private func allWorksheetXML(in directory: URL) throws -> String {
+        let sheets = directory.appendingPathComponent("xl/worksheets")
+        return try FileManager.default.contentsOfDirectory(atPath: sheets.path)
+            .filter { $0.hasSuffix(".xml") }
+            .map { try String(contentsOf: sheets.appendingPathComponent($0), encoding: .utf8) }
+            .joined()
+    }
+
+    func testJointMapJoinsEveryFactorInOneCell() throws {
+        let directory = try extract(Exporter.workbook(from: sampleLayout(), jointSeparator: "+"))
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let book = try String(contentsOf: directory.appendingPathComponent("xl/workbook.xml"), encoding: .utf8)
+        XCTAssertTrue(book.contains("Combined"), "the one-cell map gets its own tab")
+
+        let xml = try allWorksheetXML(in: directory)
+        XCTAssertTrue(xml.contains("<t xml:space=\"preserve\">Untreated+10</t>"), "A1 joins both factors")
+        XCTAssertTrue(xml.contains("<t xml:space=\"preserve\">Treated</t>"), "a single value takes no separator")
+    }
+
+    func testJointMapIsOffByDefault() throws {
+        let directory = try extract(Exporter.workbook(from: sampleLayout()))
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let book = try String(contentsOf: directory.appendingPathComponent("xl/workbook.xml"), encoding: .utf8)
+        XCTAssertFalse(book.contains("Combined"), "no joint tab unless asked for")
+    }
+
+    func testABlankSeparatorFallsBackToPlus() {
+        XCTAssertEqual(WorkbookJointMap(enabled: true, separator: "").resolvedSeparator, "+")
+        XCTAssertEqual(WorkbookJointMap(enabled: true, separator: " / ").resolvedSeparator, " / ")
+    }
+
     func testWorkbookIsAWellFormedZip() throws {
         let data = Exporter.workbook(from: sampleLayout())
         XCTAssertGreaterThan(data.count, 1000)

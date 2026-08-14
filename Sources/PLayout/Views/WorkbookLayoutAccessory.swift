@@ -7,6 +7,8 @@ final class WorkbookLayoutAccessory: NSView {
     private let popup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let scopePopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let detail = NSTextField(labelWithString: "")
+    private let jointCheck = NSButton(checkboxWithTitle: "All factors in one cell, joined by", target: nil, action: nil)
+    private let jointSeparatorField = NSTextField(string: "")
     private let offersScope: Bool
 
     var selectedLayout: WorkbookLayout {
@@ -24,16 +26,20 @@ final class WorkbookLayoutAccessory: NSView {
         return options[index]
     }
 
+    var selectedJointMap: WorkbookJointMap {
+        WorkbookJointMap(enabled: jointCheck.state == .on, separator: jointSeparatorField.stringValue)
+    }
+
     init(
-        selected: WorkbookLayout, scope: WorkbookScope,
+        selected: WorkbookLayout, scope: WorkbookScope, jointMap: WorkbookJointMap,
         plateCount: Int, activePlateName: String
     ) {
         // The plates row only exists when there is a choice to make: a single-plate
         // document exports the same workbook either way, and a control that changes
         // nothing is noise in a dialog someone is trying to get through.
         offersScope = plateCount > 1
-        super.init(frame: NSRect(x: 0, y: 0, width: 470, height: offersScope ? 96 : 62))
-        let top: CGFloat = offersScope ? 34 : 0
+        super.init(frame: NSRect(x: 0, y: 0, width: 470, height: (offersScope ? 96 : 62) + 30))
+        let top: CGFloat = (offersScope ? 34 : 0) + 30
 
         let label = NSTextField(labelWithString: "Plate maps:")
         label.alignment = .right
@@ -53,6 +59,23 @@ final class WorkbookLayoutAccessory: NSView {
         detail.textColor = .secondaryLabelColor
         detail.frame = NSRect(x: 101, y: 8 + top, width: 360, height: 15)
         addSubview(detail)
+
+        // The one-cell map row sits between the arrangement and the plates row.
+        let jointTop: CGFloat = offersScope ? 34 : 0
+        let jointLabel = NSTextField(labelWithString: "One-cell map:")
+        jointLabel.alignment = .right
+        jointLabel.frame = NSRect(x: 12, y: 7 + jointTop, width: 82, height: 17)
+        addSubview(jointLabel)
+
+        jointCheck.state = jointMap.enabled ? .on : .off
+        jointCheck.frame = NSRect(x: 98, y: 6 + jointTop, width: 240, height: 20)
+        addSubview(jointCheck)
+
+        jointSeparatorField.placeholderString = WorkbookJointMap.fallbackSeparator
+        jointSeparatorField.stringValue = jointMap.separator
+        jointSeparatorField.alignment = .center
+        jointSeparatorField.frame = NSRect(x: 338, y: 4 + jointTop, width: 44, height: 22)
+        addSubview(jointSeparatorField)
 
         if offersScope {
             let scopeLabel = NSTextField(labelWithString: "Plates:")

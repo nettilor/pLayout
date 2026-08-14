@@ -1306,6 +1306,7 @@ final class PlateEditor: ObservableObject {
         let options = WorkbookLayoutAccessory(
             selected: WorkbookLayout.remembered,
             scope: WorkbookScope.remembered,
+            jointMap: WorkbookJointMap.remembered,
             plateCount: layout.plates.count,
             activePlateName: layout.plates.first { $0.id == activePlateID }?.name ?? "this plate"
         )
@@ -1315,9 +1316,12 @@ final class PlateEditor: ObservableObject {
                 choice.remember()
                 let scope = options.selectedScope
                 scope.remember()
+                let joint = options.selectedJointMap
+                joint.remember()
                 return Exporter.workbook(
                     from: self.layout, sheetLayout: choice,
-                    onlyPlate: scope == .activePlate ? self.activePlateID : nil
+                    onlyPlate: scope == .activePlate ? self.activePlateID : nil,
+                    jointSeparator: joint.enabled ? joint.resolvedSeparator : nil
                 )
             }(),
             name: suggestedBaseName,

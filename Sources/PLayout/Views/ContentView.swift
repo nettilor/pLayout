@@ -237,7 +237,7 @@ struct ContentView: View {
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigation) { formatMenu }
         ToolbarItemGroup(placement: .navigation) { saveStateButton; savedStatesButton }
-        ToolbarItemGroup { seriesFillButton; randomiseButton }
+        ToolbarItemGroup { seriesFillButton; xyFillButton; randomiseButton }
         ToolbarItem { exportMenu }
         ToolbarItem { shortcutsButton }
     }
@@ -291,6 +291,40 @@ struct ContentView: View {
             Label("Series Fill", systemImage: "chart.line.downtrend.xyaxis")
         }
         .help("Fill the selection with a dilution or step series (\u{21E7}\u{2318}D)")
+    }
+
+    /// "XY" drawn as a template image: no symbol says "imaging positions" better
+    /// than the letters, but only an *image* label shares the toolbar island with
+    /// its siblings — a text label gets its own platter and splits the group.
+    private static let xyToolbarGlyph: NSImage = {
+        var font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        if let rounded = font.fontDescriptor.withDesign(.rounded),
+           let roundedFont = NSFont(descriptor: rounded, size: 13) {
+            font = roundedFont
+        }
+        let text = NSAttributedString(string: "XY", attributes: [
+            .font: font, .foregroundColor: NSColor.black,
+        ])
+        let size = text.size()
+        let image = NSImage(size: NSSize(width: ceil(size.width), height: ceil(size.height)))
+        image.lockFocus()
+        text.draw(at: .zero)
+        image.unlockFocus()
+        image.isTemplate = true
+        return image
+    }()
+
+    private var xyFillButton: some View {
+        Button {
+            editor.openXYFillSheet()
+        } label: {
+            Label {
+                Text("XY Position Fill")
+            } icon: {
+                Image(nsImage: Self.xyToolbarGlyph)
+            }
+        }
+        .help("Number wells as imaging positions (\u{21E7}\u{2318}Y)")
     }
 
     private var randomiseButton: some View {

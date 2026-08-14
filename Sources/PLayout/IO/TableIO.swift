@@ -154,13 +154,43 @@ enum WorkbookScope: String, CaseIterable, Codable {
     }
 }
 
+/// The optional one-cell plate map: every factor's value for a well joined into a
+/// single string, for tools that want one label per well. Chosen in the save panel
+/// beside the arrangement, and remembered the same way.
+struct WorkbookJointMap {
+    var enabled: Bool
+    /// As typed in the panel; blank falls back to "+" at build time, so clearing
+    /// the field never silently glues values together with nothing between them.
+    var separator: String
+
+    static let fallbackSeparator = "+"
+    var resolvedSeparator: String { separator.isEmpty ? Self.fallbackSeparator : separator }
+
+    private static let enabledKey = "workbookJointMapEnabled"
+    private static let separatorKey = "workbookJointMapSeparator"
+
+    static var remembered: WorkbookJointMap {
+        WorkbookJointMap(
+            enabled: UserDefaults.standard.bool(forKey: enabledKey),
+            separator: UserDefaults.standard.string(forKey: separatorKey) ?? ""
+        )
+    }
+
+    func remember() {
+        UserDefaults.standard.set(enabled, forKey: Self.enabledKey)
+        UserDefaults.standard.set(separator, forKey: Self.separatorKey)
+    }
+}
+
 enum Exporter {
 
     /// A full workbook: colour-coded plate maps arranged per `sheetLayout`, plus a
-    /// tidy one-row-per-well sheet for analysis and a legend.
+    /// tidy one-row-per-well sheet for analysis and a legend. A non-nil
+    /// `jointSeparator` adds one extra map per plate with every factor's value
+    /// joined into a single cell.
     static func workbook(
         from layout: Layout, sheetLayout: WorkbookLayout = .sheetPerFactor,
-        onlyPlate plateID: UUID? = nil
+        onlyPlate plateID: UUID? = nil, jointSeparator: String? = nil
     ) -> Data {
         // The scope is one filter, applied here so the maps, the Wells sheet and the
         // legend can never disagree about which plates are in the file. An id that
@@ -186,9 +216,53 @@ enum Exporter {
             }
         }
 
+        if let jointSeparator {
+            for plate in layout.plates {
+                sheets.append(jointMapSheet(plate: plate, factors: layout.factors, separator: jointSeparator))
+            }
+        }
+
         sheets.append(tidySheet(layout: layout))
         sheets.append(legendSheet(layout: layout))
         return XLSX.build(sheets: sheets)
+    }
+
+    /// The one-cell map: every factor's value for the well in one string, document
+    /// order, missing values skipped. No fill colour — no single factor owns the cell.
+    private static func jointMapSheet(plate: Plate, factors: [Factor], separator: String) -> XLSX.Sheet {
+        var rows: [[XLSX.Cell]] = []
+
+        var header: [XLSX.Cell] = [.header("")]
+        for c in 0..<plate.format.cols {
+            header.append(.header("\(c + 1)"))
+        }
+        rows.append(header)
+
+        for r in 0..<plate.format.rows {
+            var row: [XLSX.Cell] = [.header(WellNaming.rowLabel(r))]
+            for c in 0..<plate.format.cols {
+                let well = plate.format.index(row: r, col: c)
+                let joined = factors.compactMap { factor -> String? in
+                    guard let levelID = plate.levelID(factor: factor.id, well: well) else { return nil }
+                    return factor.level(id: levelID)?.name
+                }.joined(separator: separator)
+                row.append(XLSX.Cell(
+                    value: joined.isEmpty ? .blank : .text(joined),
+                    fillHex: nil, bold: false, centered: true
+                ))
+            }
+            rows.append(row)
+        }
+
+        return XLSX.Sheet(
+            name: "\(plate.name) · Combined",
+            // The joined strings are several words long, so these columns get about
+            // twice the width of a single-factor map's.
+            rows: rows,
+            columnWidths: [5] + Array(repeating: 24.0, count: plate.format.cols),
+            freezeRows: 1,
+            freezeCols: 1
+        )
     }
 
     /// Header row plus one row per plate row — the map itself, without a sheet around it.
