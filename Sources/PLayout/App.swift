@@ -2,6 +2,12 @@ import SwiftUI
 
 @main
 struct PlateLayoutApp: App {
+    init() {
+        // Quiet unless there is news: at most daily, delayed past window creation,
+        // and skipped entirely when the toggle in the app menu is off.
+        UpdateChecker.shared.checkOnLaunch()
+    }
+
     var body: some Scene {
         DocumentGroup(newDocument: { PlateDocument() }) { file in
             ContentView(document: file.document)
@@ -28,7 +34,17 @@ struct PlateCommands: Commands {
     // so a sidebar reorder left ⌘n switching to the factors' old order.
     @FocusedObject private var editor: PlateEditor?
 
+    // For the update items, which need no document. The auto-check toggle lives here
+    // beside the manual check rather than in ⌘, — the Settings window is a section
+    // past its height budget already, and the two belong side by side anyway.
+    @ObservedObject private var preferences = Preferences.shared
+
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Check for Updates…") { UpdateChecker.shared.checkNow() }
+            Toggle("Check for Updates Automatically", isOn: $preferences.checkForUpdatesAutomatically)
+        }
+
         CommandGroup(replacing: .printItem) {
             Button("Print Plate…") { editor?.printPlate() }
                 .keyboardShortcut("p", modifiers: .command)

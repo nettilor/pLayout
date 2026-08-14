@@ -221,6 +221,17 @@ final class Preferences: ObservableObject {
         }
     }
 
+    /// Whether launching the app may look at GitHub for a newer release — at most once
+    /// a day, silently unless there is one. On by default; switched from the app menu
+    /// beside "Check for Updates…" rather than from ⌘,, whose window has no room left
+    /// for a seventh section.
+    @Published var checkForUpdatesAutomatically: Bool {
+        didSet {
+            guard checkForUpdatesAutomatically != oldValue else { return }
+            defaults.set(checkForUpdatesAutomatically, forKey: Self.checkForUpdatesKey)
+        }
+    }
+
     /// Every font the canvas draws with comes from here, so the family choice cannot
     /// miss a label. An uninstalled family falls back to the system font rather than
     /// to a crash or to Helvetica-by-surprise.
@@ -261,6 +272,7 @@ final class Preferences: ObservableObject {
     private static let emptyWellColorKey = "emptyWellColorHex"
     private static let canvasFontFamilyKey = "canvasFontFamily"
     private static let canvasFontScaleKey = "canvasFontScale"
+    private static let checkForUpdatesKey = "checkForUpdatesAutomatically"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -282,6 +294,7 @@ final class Preferences: ObservableObject {
             .flatMap { $0.isEmpty ? nil : $0 }
         let storedScale = defaults.object(forKey: Self.canvasFontScaleKey) as? Double ?? 1.0
         canvasFontScale = min(max(storedScale, 0.7), 1.8)
+        checkForUpdatesAutomatically = defaults.object(forKey: Self.checkForUpdatesKey) as? Bool ?? true
     }
 
     func resetToDefaults() {
@@ -292,6 +305,7 @@ final class Preferences: ObservableObject {
         emptyWellColorHex = nil
         canvasFontFamily = nil
         canvasFontScale = 1.0
+        checkForUpdatesAutomatically = true
     }
 }
 

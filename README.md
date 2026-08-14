@@ -14,7 +14,7 @@ define.
 ```sh
 ./build.sh
 open "build/pLayout.app"
-swift test          # 148 tests
+swift test          # 262 tests
 ```
 
 Swift Package Manager, no third-party dependencies. Requires macOS 14 or later.
@@ -34,6 +34,15 @@ down, and press **Open Anyway**. It is asked for once, and never again.
 
 `Tools/make_dmg.sh` is what packages a release — a universal build in a disk
 image whose window carries those instructions.
+
+Once installed, pLayout notices new releases by itself: at most once a day it
+asks this repository's releases feed whether a newer version exists, silently
+unless there is one — and never says a word offline. When one exists it offers
+to fetch the DMG into your Downloads folder and open it, ready to drag into
+Applications; nothing is ever installed behind your back. **Check for
+Updates…** in the pLayout menu asks on demand, and **Check for Updates
+Automatically** beside it turns the daily look off. That check is the only
+network request the app ever makes.
 
 ## The model: factors, not just labels
 
