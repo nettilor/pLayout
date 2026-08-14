@@ -114,6 +114,36 @@ enum WellShape: String, Codable, DisplayChoice {
     var isRound: Bool { self == .round }
 }
 
+/// Where a new condition's colour comes from.
+///
+/// The default starts the palette over for every factor, so condition 1 is the same
+/// familiar blue everywhere — harmless while each factor colours only its own line of
+/// a well, but in the stacked label modes two factors sharing a hue put identical
+/// rails in one well. The alternative promises every condition in the document its
+/// own colour.
+enum NewConditionColors: String, Codable, DisplayChoice {
+    case perFactor
+    case neverRepeat
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .perFactor: return "Start the palette over per factor"
+        case .neverRepeat: return "Never repeat a colour"
+        }
+    }
+
+    var note: String {
+        switch self {
+        case .perFactor:
+            return "Every factor's first condition is the same familiar blue. Two factors can share a colour — they never paint the same line of a well."
+        case .neverRepeat:
+            return "A new condition takes the first colour nothing else in the document is using: the twenty hues first, then lighter and darker takes of each."
+        }
+    }
+}
+
 /// App-wide display settings, shared by every open document and remembered between
 /// launches. Deliberately *not* part of `Layout`: this is how someone likes to look at
 /// a plate, not a property of the experiment, and it should not travel in a `.plate`
@@ -144,10 +174,93 @@ final class Preferences: ObservableObject {
         }
     }
 
+    @Published var newConditionColors: NewConditionColors {
+        didSet {
+            guard newConditionColors != oldValue else { return }
+            defaults.set(newConditionColors.rawValue, forKey: Self.newConditionColorsKey)
+        }
+    }
+
+    /// The fill for wells with no value, as a hex string — or nil for the default,
+    /// which follows light and dark mode. Stored as "no opinion" rather than as a
+    /// copy of the default colour, so Reset genuinely restores default *behaviour*:
+    /// a frozen copy would stop following the appearance the moment it was written.
+    @Published var emptyWellColorHex: String? {
+        didSet {
+            guard emptyWellColorHex != oldValue else { return }
+            if let hex = emptyWellColorHex {
+                defaults.set(hex, forKey: Self.emptyWellColorKey)
+            } else {
+                defaults.removeObject(forKey: Self.emptyWellColorKey)
+            }
+        }
+    }
+
+    /// The plate's typeface — nil for the system font. Scoped to the canvas (wells,
+    /// headers, the line key) and to what the canvas renders: exports and print. The
+    /// window's own controls keep the system font; refonting macOS chrome is neither
+    /// possible nor a kindness.
+    @Published var canvasFontFamily: String? {
+        didSet {
+            guard canvasFontFamily != oldValue else { return }
+            if let family = canvasFontFamily {
+                defaults.set(family, forKey: Self.canvasFontFamilyKey)
+            } else {
+                defaults.removeObject(forKey: Self.canvasFontFamilyKey)
+            }
+        }
+    }
+
+    /// A multiplier on every text size the canvas computes, not a point size: label
+    /// sizes are continuous functions of the cell size and the fitting is measured,
+    /// so an absolute size would fight both. Clamped on load to what stays usable.
+    @Published var canvasFontScale: Double {
+        didSet {
+            guard canvasFontScale != oldValue else { return }
+            defaults.set(canvasFontScale, forKey: Self.canvasFontScaleKey)
+        }
+    }
+
+    /// Every font the canvas draws with comes from here, so the family choice cannot
+    /// miss a label. An uninstalled family falls back to the system font rather than
+    /// to a crash or to Helvetica-by-surprise.
+    func canvasFont(ofSize size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
+        guard let family = canvasFontFamily else {
+            return .systemFont(ofSize: size, weight: weight)
+        }
+        let coarse: Int
+        switch weight {
+        case .bold, .heavy, .black: coarse = 9
+        case .semibold: coarse = 8
+        case .medium: coarse = 6
+        default: coarse = 5
+        }
+        return NSFontManager.shared.font(withFamily: family, traits: [], weight: coarse, size: size)
+            ?? .systemFont(ofSize: size, weight: weight)
+    }
+
+    /// The chosen empty-well colour as a colour, or nil when the default is in force.
+    var customEmptyWellColor: NSColor? {
+        emptyWellColorHex.flatMap { NSColor(hex: $0) }
+    }
+
+    /// The empty-well fill, resolved: the custom colour if one is set, otherwise the
+    /// appearance-following default the canvas has always used. Export keeps its
+    /// slightly fainter default so paper stays clean; a chosen colour is a chosen
+    /// colour, everywhere.
+    func emptyWellFill(exportMode: Bool) -> NSColor {
+        if let hex = emptyWellColorHex, let custom = NSColor(hex: hex) { return custom }
+        return NSColor.quaternaryLabelColor.withAlphaComponent(exportMode ? 0.10 : 0.13)
+    }
+
     private let defaults: UserDefaults
     private static let wellTextStyleKey = "wellTextStyle"
     private static let activeMarkerStyleKey = "activeMarkerStyle"
     private static let wellShapeKey = "newDocumentWellShape"
+    private static let newConditionColorsKey = "newConditionColors"
+    private static let emptyWellColorKey = "emptyWellColorHex"
+    private static let canvasFontFamilyKey = "canvasFontFamily"
+    private static let canvasFontScaleKey = "canvasFontScale"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -159,12 +272,26 @@ final class Preferences: ObservableObject {
             .flatMap(ActiveMarkerStyle.init(rawValue:)) ?? .matchLabel
         newDocumentWellShape = defaults.string(forKey: Self.wellShapeKey)
             .flatMap(WellShape.init(rawValue:)) ?? .round
+        newConditionColors = defaults.string(forKey: Self.newConditionColorsKey)
+            .flatMap(NewConditionColors.init(rawValue:)) ?? .perFactor
+        // Validated here rather than at every read: garbage in the store behaves as
+        // "no opinion", not as a black well or a crash.
+        emptyWellColorHex = defaults.string(forKey: Self.emptyWellColorKey)
+            .flatMap { NSColor(hex: $0) != nil ? $0 : nil }
+        canvasFontFamily = defaults.string(forKey: Self.canvasFontFamilyKey)
+            .flatMap { $0.isEmpty ? nil : $0 }
+        let storedScale = defaults.object(forKey: Self.canvasFontScaleKey) as? Double ?? 1.0
+        canvasFontScale = min(max(storedScale, 0.7), 1.8)
     }
 
     func resetToDefaults() {
         wellTextStyle = .automatic
         activeMarkerStyle = .matchLabel
         newDocumentWellShape = .round
+        newConditionColors = .perFactor
+        emptyWellColorHex = nil
+        canvasFontFamily = nil
+        canvasFontScale = 1.0
     }
 }
 

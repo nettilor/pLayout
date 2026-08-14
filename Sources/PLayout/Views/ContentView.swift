@@ -36,7 +36,7 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 720, minHeight: 480)
-        .focusedSceneValue(\.plateEditor, editor)
+        .focusedSceneObject(editor)
         .sheet(isPresented: $editor.showingSeriesSheet) {
             SeriesFillSheet(editor: editor)
         }

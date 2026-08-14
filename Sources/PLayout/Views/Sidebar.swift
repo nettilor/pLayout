@@ -185,9 +185,13 @@ struct Sidebar: View {
             }
             SwatchPicker(
                 hex: level.colorHex,
-                used: editor.activeFactor?.levels
+                // Under never-repeat, a duplicate is a duplicate anywhere in the
+                // document — the dot's scope follows the promise being made.
+                used: (Preferences.shared.newConditionColors == .neverRepeat
+                    ? editor.layout.factors.flatMap(\.levels)
+                    : editor.activeFactor?.levels ?? [])
                     .filter { $0.id != level.id }
-                    .map(\.colorHex) ?? []
+                    .map(\.colorHex)
             ) { editor.setLevelColor(level.id, hex: $0) }
             EditableName(
                 text: level.name,
@@ -305,14 +309,16 @@ struct Sidebar: View {
             }
             .padding(.vertical, 2)
 
-            Toggle("Round wells", isOn: $editor.roundWells)
-                .help("Ignored while stacked labels are showing — they need the full width of the well, so those are drawn as squares.")
+            // Sits directly under the picker it belongs with: this is still about what
+            // a well says, where the two below are about how a well is drawn.
             // Once every factor has its own line, this control has nothing left to govern.
             if !editor.layout.wellLabelMode.stacksEveryFactor {
                 Toggle("Show other factors", isOn: $editor.showSecondaryFactors)
                     .disabled(editor.layout.factors.count < 2)
                     .help("Adds a colour strip along the bottom of each well for the factors you are not painting.")
             }
+            Toggle("Round wells", isOn: $editor.roundWells)
+                .help("Ignored while stacked labels are showing — they need the full width of the well, so those are drawn as squares.")
             Toggle(
                 "Pad well IDs (A01)",
                 isOn: Binding(

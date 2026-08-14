@@ -54,10 +54,12 @@ struct Factor: Identifiable, Codable, Hashable {
     func index(of id: UUID) -> Int? { levels.firstIndex { $0.id == id } }
 
     /// Adds a level with the given name if absent, returning its id either way.
-    mutating func ensureLevel(named name: String) -> UUID {
+    /// The colour override exists for the never-repeat setting, whose choice depends
+    /// on the whole document — which a single factor cannot see.
+    mutating func ensureLevel(named name: String, colorHex: String? = nil) -> UUID {
         let clean = name.trimmingCharacters(in: .whitespaces)
         if let existing = level(named: clean) { return existing.id }
-        let level = Level(name: clean, colorHex: Palette.color(at: levels.count))
+        let level = Level(name: clean, colorHex: colorHex ?? Palette.color(at: levels.count))
         levels.append(level)
         return level.id
     }
@@ -524,5 +526,19 @@ struct Layout: Codable, Hashable {
         var n = 2
         while existing.contains("\(base) \(n)".lowercased()) { n += 1 }
         return "\(base) \(n)"
+    }
+}
+
+extension Layout {
+    /// Every colour any condition in the document is using, normalised for membership
+    /// tests. `excluding` leaves one factor's own levels out — recolouring a factor
+    /// replaces those, so they must not count against the choice.
+    func usedLevelColors(excluding factorID: UUID? = nil) -> Set<String> {
+        Set(
+            factors
+                .filter { $0.id != factorID }
+                .flatMap(\.levels)
+                .map { Palette.normalized($0.colorHex) }
+        )
     }
 }

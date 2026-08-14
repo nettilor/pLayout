@@ -27,6 +27,7 @@ final class PreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.wellTextStyle, .automatic)
         XCTAssertEqual(preferences.activeMarkerStyle, .matchLabel)
         XCTAssertEqual(preferences.newDocumentWellShape, .round)
+        XCTAssertEqual(preferences.newConditionColors, .perFactor)
     }
 
     func testTheWellShapeDefaultIsRememberedAndReadable() {
@@ -167,5 +168,172 @@ final class PreferencesTests: XCTestCase {
                 "\(hex) had nowhere darker to go and was not lightened either"
             )
         }
+    }
+
+    // MARK: - New condition colours
+
+    func testNewConditionColoursRememberAndDecodeLeniently() {
+        let preferences = Preferences(defaults: defaults)
+        preferences.newConditionColors = .neverRepeat
+        XCTAssertEqual(Preferences(defaults: defaults).newConditionColors, .neverRepeat)
+
+        defaults.set("polka-dot", forKey: "newConditionColors")
+        XCTAssertEqual(Preferences(defaults: defaults).newConditionColors, .perFactor)
+    }
+
+    func testFirstColourNeverRepeatsWhileTheGridLasts() {
+        var used = Set<String>()
+        var picked = [String]()
+        for i in 0..<60 {
+            let hex = Palette.firstColor(avoiding: used, fallbackIndex: i)
+            XCTAssertFalse(used.contains(Palette.normalized(hex)), "repeat at pick \(i)")
+            used.insert(Palette.normalized(hex))
+            picked.append(hex)
+        }
+        // The first twenty are the plain palette in its own order, so the two modes
+        // agree completely until a colour would actually have repeated.
+        XCTAssertEqual(Array(picked.prefix(20)), Palette.categorical)
+    }
+
+    func testFirstColourFallsBackOnceTheGridIsSpent() {
+        var used = Set(Palette.categorical.map(Palette.normalized))
+        for row in 0..<5 {
+            for hue in Palette.categorical {
+                used.insert(Palette.normalized(Palette.shades(of: hue)[row]))
+            }
+        }
+        XCTAssertEqual(Palette.firstColor(avoiding: used, fallbackIndex: 3), Palette.color(at: 3))
+    }
+
+    func testEverySecondFactorStartsFromTheSameBlueByDefault() {
+        let document = PlateDocument()
+        let editor = PlateEditor(document: document)
+        editor.addFactor()
+        XCTAssertEqual(
+            document.layout.factors[1].levels[0].colorHex,
+            document.layout.factors[0].levels[0].colorHex
+        )
+    }
+
+    func testNeverRepeatGivesEveryNewConditionAFreshColour() {
+        let previous = Preferences.shared.newConditionColors
+        Preferences.shared.newConditionColors = .neverRepeat
+        defer { Preferences.shared.newConditionColors = previous }
+
+        let document = PlateDocument()
+        let editor = PlateEditor(document: document)
+        editor.addFactor()
+        editor.addLevel()
+        editor.addLevel()
+
+        let all = document.layout.factors.flatMap(\.levels).map { Palette.normalized($0.colorHex) }
+        XCTAssertEqual(Set(all).count, all.count, "a colour repeated in \(all)")
+    }
+
+    func testPastedValuesTakeFreshColoursUnderNeverRepeat() {
+        let previous = Preferences.shared.newConditionColors
+        Preferences.shared.newConditionColors = .neverRepeat
+        defer { Preferences.shared.newConditionColors = previous }
+
+        let document = PlateDocument()
+        let editor = PlateEditor(document: document)
+        editor.addFactor()
+        editor.setActiveFactor(document.layout.factors[1].id)
+        editor.selection = WellRange(single: WellPos(row: 0, col: 0))
+
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString("One\tTwo\tThree", forType: .string)
+        editor.pasteFromPasteboard()
+
+        let all = document.layout.factors.flatMap(\.levels).map { Palette.normalized($0.colorHex) }
+        XCTAssertEqual(Set(all).count, all.count, "a colour repeated in \(all)")
+    }
+
+    func testRecolourSpreadsAcrossUnusedColoursUnderNeverRepeat() {
+        let previous = Preferences.shared.newConditionColors
+        Preferences.shared.newConditionColors = .neverRepeat
+        defer { Preferences.shared.newConditionColors = previous }
+
+        let document = PlateDocument()
+        let editor = PlateEditor(document: document)
+        editor.addFactor()
+        editor.addLevel()
+        // Force a collision by hand, then ask the palette to sort it out.
+        let factorID = document.layout.factors[1].id
+        editor.setActiveFactor(factorID)
+        for level in document.layout.factors[1].levels {
+            editor.setLevelColor(level.id, hex: document.layout.factors[0].levels[0].colorHex)
+        }
+        editor.recolorLevelsFromPalette()
+
+        let all = document.layout.factors.flatMap(\.levels).map { Palette.normalized($0.colorHex) }
+        XCTAssertEqual(Set(all).count, all.count, "a colour repeated in \(all)")
+    }
+
+    // MARK: - Empty well colour
+
+    func testEmptyWellColourRemembersResetsAndShrugsOffGarbage() {
+        let preferences = Preferences(defaults: defaults)
+        XCTAssertNil(preferences.emptyWellColorHex)
+
+        preferences.emptyWellColorHex = "#EEF2D8"
+        XCTAssertEqual(Preferences(defaults: defaults).emptyWellColorHex, "#EEF2D8")
+        XCTAssertEqual(preferences.emptyWellFill(exportMode: false).hexString, "#EEF2D8")
+        // A chosen colour ignores export's fainter default — it is used as it is.
+        XCTAssertEqual(preferences.emptyWellFill(exportMode: true).hexString, "#EEF2D8")
+
+        defaults.set("chartreuse", forKey: "emptyWellColorHex")
+        XCTAssertNil(Preferences(defaults: defaults).emptyWellColorHex)
+
+        preferences.resetToDefaults()
+        XCTAssertNil(preferences.emptyWellColorHex)
+    }
+
+    // MARK: - Plate text
+
+    func testPlateFontRemembersClampsAndResets() {
+        let preferences = Preferences(defaults: defaults)
+        XCTAssertNil(preferences.canvasFontFamily)
+        XCTAssertEqual(preferences.canvasFontScale, 1.0)
+
+        preferences.canvasFontFamily = "Georgia"
+        preferences.canvasFontScale = 1.3
+        let reopened = Preferences(defaults: defaults)
+        XCTAssertEqual(reopened.canvasFontFamily, "Georgia")
+        XCTAssertEqual(reopened.canvasFontScale, 1.3)
+
+        defaults.set(9.0, forKey: "canvasFontScale")
+        XCTAssertEqual(Preferences(defaults: defaults).canvasFontScale, 1.8)
+        defaults.set(0.01, forKey: "canvasFontScale")
+        XCTAssertEqual(Preferences(defaults: defaults).canvasFontScale, 0.7)
+
+        preferences.resetToDefaults()
+        XCTAssertNil(preferences.canvasFontFamily)
+        XCTAssertEqual(preferences.canvasFontScale, 1.0)
+    }
+
+    func testCanvasFontFallsBackToTheSystemFont() {
+        let preferences = Preferences(defaults: defaults)
+        let system = NSFont.systemFont(ofSize: 12, weight: .medium)
+        XCTAssertEqual(preferences.canvasFont(ofSize: 12, weight: .medium), system)
+
+        preferences.canvasFontFamily = "NoSuchFamily-Anywhere"
+        XCTAssertEqual(preferences.canvasFont(ofSize: 12, weight: .medium), system)
+
+        preferences.canvasFontFamily = "Helvetica"
+        let chosen = preferences.canvasFont(ofSize: 12, weight: .medium)
+        XCTAssertEqual(chosen.familyName, "Helvetica")
+        XCTAssertEqual(chosen.pointSize, 12)
+    }
+
+    func testTheSizeSettingScalesTheLabelPlanUniformly() {
+        // A plan that does not stack is the pure case: the scaled plan must be
+        // exactly the unscaled plan with larger type.
+        let base = PlateCanvasView.labelPlan(cell: 40, mode: .activeFactor, factorCount: 1, scale: 1)
+        let scaled = PlateCanvasView.labelPlan(cell: 40, mode: .activeFactor, factorCount: 1, scale: 1.4)
+        XCTAssertEqual(scaled.primarySize, base.primarySize * 1.4, accuracy: 0.001)
+        XCTAssertEqual(scaled.secondarySize, base.secondarySize * 1.4, accuracy: 0.001)
+        XCTAssertEqual(scaled.gap, base.gap * 1.4, accuracy: 0.001)
     }
 }

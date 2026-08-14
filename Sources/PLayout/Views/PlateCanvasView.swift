@@ -375,16 +375,20 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         }
         let hiddenFactorCount = stacked.isEmpty ? 0 : overflow.count - stripeFactors.count
 
-        let wellFontSize = max(7, min(geo.cell * 0.30, 13))
-        let emptyFill = NSColor.quaternaryLabelColor.withAlphaComponent(exportMode ? 0.10 : 0.13)
-        // Every Overview well gets this same tile, so it is pitched a little stronger
-        // than the empty-well fill: it has to read as a surface, not as an absence.
-        // It has no colour of its own to contrast against, so under "always white" it
-        // is the tile that moves, not the ink — otherwise Overview is unreadable.
-        let neutralFill = textStyle.prefersDarkNeutral
+        let wellFontSize = max(7, min(geo.cell * 0.30, 13)) * CGFloat(Preferences.shared.canvasFontScale)
+        let customEmpty = Preferences.shared.customEmptyWellColor
+        let emptyFill = Preferences.shared.emptyWellFill(exportMode: exportMode)
+        // Every Overview well gets this same tile, so by default it is pitched a
+        // little stronger than the empty-well fill: it has to read as a surface, not
+        // as an absence. It has no colour of its own to contrast against, so under
+        // "always white" it is the tile that moves, not the ink — otherwise Overview
+        // is unreadable. A chosen empty-well colour takes over both fills — Overview
+        // is the stacked pills on an empty-well backdrop, and the backdrop is now
+        // the user's — so the ink contrasts with *it*, exactly as on a painted well.
+        let neutralFill = customEmpty ?? (textStyle.prefersDarkNeutral
             ? NSColor(white: 0.32, alpha: 1)
-            : NSColor.quaternaryLabelColor.withAlphaComponent(exportMode ? 0.14 : 0.18)
-        let neutralInk = textStyle.neutralInk
+            : NSColor.quaternaryLabelColor.withAlphaComponent(exportMode ? 0.14 : 0.18))
+        let neutralInk = customEmpty.map { $0.labelInk(textStyle) } ?? textStyle.neutralInk
         let hairline = NSColor.separatorColor.withAlphaComponent(0.6)
         let drawHairlines = geo.cell >= 4
 
@@ -552,9 +556,15 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     /// is measured against the *whole* well body. Anything else — a stepped ramp, or
     /// subtracting space for a stripe that may not be drawn — makes `lineCount` fall as
     /// the window grows, which reads as labels randomly disappearing.
-    static func labelPlan(cell: CGFloat, mode: WellLabelMode, factorCount: Int) -> LabelPlan {
-        let primary = max(7, min(cell * 0.30, 13))
-        let secondary = max(6.5, primary * 0.80)
+    static func labelPlan(
+        cell: CGFloat, mode: WellLabelMode, factorCount: Int,
+        scale: CGFloat = CGFloat(Preferences.shared.canvasFontScale)
+    ) -> LabelPlan {
+        // The user's size multiplies every tier and the gap uniformly, so the plan is
+        // exactly the unscaled plan with larger type — the continuity the tests pin
+        // survives multiplication, and the fit is still measured honestly below.
+        let primary = max(7, min(cell * 0.30, 13)) * scale
+        let secondary = max(6.5 * scale, primary * 0.80)
         let gap = max(0.5, secondary * 0.16)
         var plan = LabelPlan(lineCount: 0, primarySize: primary, secondarySize: secondary, gap: gap)
 
@@ -596,6 +606,12 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
 
     private func labelPlan(cell: CGFloat, mode: WellLabelMode, factorCount: Int) -> LabelPlan {
         Self.labelPlan(cell: cell, mode: mode, factorCount: factorCount)
+    }
+
+    /// Every canvas font routes through the shared factory, so the family setting
+    /// cannot miss a label — see Preferences.canvasFont.
+    private func canvasFont(ofSize size: CGFloat, weight: NSFont.Weight) -> NSFont {
+        Preferences.shared.canvasFont(ofSize: size, weight: weight)
     }
 
     /// Which stacked line carries the headline tier — bigger and semibold. It follows
@@ -803,7 +819,8 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     private func drawHeaders(geo: PlateGeometry, selection: WellRange?) {
         let accent = NSColor.controlAccentColor
         let headerFontSize = max(7, min(min(geo.headerH * 0.55, geo.cell * 0.42), 12))
-        let font = NSFont.systemFont(ofSize: headerFontSize, weight: .semibold)
+            * CGFloat(Preferences.shared.canvasFontScale)
+        let font = canvasFont(ofSize: headerFontSize, weight: .semibold)
         // Numbers get thinned out on a dense plate; letters are short enough to keep.
         let numberStride = geo.cell >= 15 ? 1 : (geo.cell >= 10 ? 2 : 4)
 
@@ -934,18 +951,18 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         let floorSize = max(6, min(minFontSize ?? 7, maxFontSize))
 
         let measured = (trimmed as NSString)
-            .size(withAttributes: [.font: NSFont.systemFont(ofSize: maxFontSize, weight: weight)]).width
+            .size(withAttributes: [.font: canvasFont(ofSize: maxFontSize, weight: weight)]).width
         guard measured > 0 else { return }
 
         // Width is close to linear in point size, so the ratio gets us nearly there;
         // hinting makes it inexact, so close the gap before giving up and trimming.
         var size = max(floorSize, min(maxFontSize, maxFontSize * available / measured))
-        var font = NSFont.systemFont(ofSize: size, weight: weight)
+        var font = canvasFont(ofSize: size, weight: weight)
         var width = (trimmed as NSString).size(withAttributes: [.font: font]).width
         var attempts = 0
         while width > available, size > floorSize, attempts < 8 {
             size = max(floorSize, size * min(0.97, available / width))
-            font = NSFont.systemFont(ofSize: size, weight: weight)
+            font = canvasFont(ofSize: size, weight: weight)
             width = (trimmed as NSString).size(withAttributes: [.font: font]).width
             attempts += 1
         }

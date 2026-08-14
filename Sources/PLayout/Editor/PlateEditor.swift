@@ -279,12 +279,21 @@ final class PlateEditor: ObservableObject {
 
     // MARK: - Level editing
 
+    /// The colour for a condition about to be created, honouring the Settings choice.
+    /// Takes the layout the level is joining rather than reading the editor's own,
+    /// because during a paste the set of used colours grows with every new value.
+    static func newLevelColor(in layout: Layout, fallback index: Int) -> String {
+        Preferences.shared.newConditionColors == .neverRepeat
+            ? Palette.firstColor(avoiding: layout.usedLevelColors(), fallbackIndex: index)
+            : Palette.color(at: index)
+    }
+
     func addLevel(name: String? = nil) {
         guard let factorID = activeFactorID, let factor = activeFactor else { return }
         let count = factor.levels.count
         let level = Level(
             name: name ?? "Condition \(count + 1)",
-            colorHex: Palette.color(at: count)
+            colorHex: Self.newLevelColor(in: layout, fallback: count)
         )
         edit("Add Level") { layout in
             guard let i = layout.factorIndex(id: factorID) else { return }
@@ -333,9 +342,21 @@ final class PlateEditor: ObservableObject {
 
     func recolorLevelsFromPalette() {
         guard let factorID = activeFactorID, let factor = activeFactor else { return }
-        let hexes = factor.kind == .numeric
-            ? Palette.ramp(count: factor.levels.count, baseHex: Palette.color(at: 0))
-            : (0..<factor.levels.count).map { Palette.color(at: $0) }
+        let hexes: [String]
+        if factor.kind == .numeric {
+            hexes = Palette.ramp(count: factor.levels.count, baseHex: Palette.color(at: 0))
+        } else if Preferences.shared.newConditionColors == .neverRepeat {
+            // The factor's own colours are being replaced, so only the *other* factors
+            // count against the choice — and each pick counts against the next.
+            var used = layout.usedLevelColors(excluding: factorID)
+            hexes = (0..<factor.levels.count).map { i in
+                let hex = Palette.firstColor(avoiding: used, fallbackIndex: i)
+                used.insert(Palette.normalized(hex))
+                return hex
+            }
+        } else {
+            hexes = (0..<factor.levels.count).map { Palette.color(at: $0) }
+        }
         edit("Recolour Levels") { layout in
             guard let fi = layout.factorIndex(id: factorID) else { return }
             for (i, hex) in hexes.enumerated() where layout.factors[fi].levels.indices.contains(i) {
@@ -362,7 +383,7 @@ final class PlateEditor: ObservableObject {
     func addFactor() {
         let factor = Factor(
             name: layout.uniqueFactorName(base: "Factor"),
-            levels: [Level(name: "Level 1", colorHex: Palette.color(at: 0))]
+            levels: [Level(name: "Level 1", colorHex: Self.newLevelColor(in: layout, fallback: 0))]
         )
         edit("Add Factor") { layout in layout.factors.append(factor) }
         setActiveFactor(factor.id)
@@ -774,7 +795,12 @@ final class PlateEditor: ObservableObject {
                         layout.plates[index].setLevelID(nil, factor: factorID, well: well)
                     } else {
                         let existed = layout.factors[fi].level(named: value) != nil
-                        let levelID = layout.factors[fi].ensureLevel(named: value)
+                        let levelID = layout.factors[fi].ensureLevel(
+                            named: value,
+                            colorHex: existed ? nil : Self.newLevelColor(
+                                in: layout, fallback: layout.factors[fi].levels.count
+                            )
+                        )
                         if !existed { created += 1 }
                         layout.plates[index].setLevelID(levelID, factor: factorID, well: well)
                     }
@@ -946,12 +972,22 @@ final class PlateEditor: ObservableObject {
     }
 
     func exportWorkbook() {
-        let options = WorkbookLayoutAccessory(selected: WorkbookLayout.remembered)
+        let options = WorkbookLayoutAccessory(
+            selected: WorkbookLayout.remembered,
+            scope: WorkbookScope.remembered,
+            plateCount: layout.plates.count,
+            activePlateName: layout.plates.first { $0.id == activePlateID }?.name ?? "this plate"
+        )
         save(
             data: {
                 let choice = options.selectedLayout
                 choice.remember()
-                return Exporter.workbook(from: self.layout, sheetLayout: choice)
+                let scope = options.selectedScope
+                scope.remember()
+                return Exporter.workbook(
+                    from: self.layout, sheetLayout: choice,
+                    onlyPlate: scope == .activePlate ? self.activePlateID : nil
+                )
             }(),
             name: suggestedBaseName,
             ext: "xlsx",

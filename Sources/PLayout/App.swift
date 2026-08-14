@@ -19,23 +19,14 @@ struct PlateLayoutApp: App {
     }
 }
 
-// MARK: - Focused document plumbing
-
-private struct PlateEditorFocusKey: FocusedValueKey {
-    typealias Value = PlateEditor
-}
-
-extension FocusedValues {
-    var plateEditor: PlateEditor? {
-        get { self[PlateEditorFocusKey.self] }
-        set { self[PlateEditorFocusKey.self] = newValue }
-    }
-}
-
 // MARK: - Menu bar
 
 struct PlateCommands: Commands {
-    @FocusedValue(\.plateEditor) private var editor
+    // @FocusedObject, not @FocusedValue: the Factor menu bakes ⌘1–⌘9 onto items by
+    // position, and key equivalents dispatch against the menu as last built, without
+    // opening it. A plain focused value never re-evaluates when the layout changes,
+    // so a sidebar reorder left ⌘n switching to the factors' old order.
+    @FocusedObject private var editor: PlateEditor?
 
     var body: some Commands {
         CommandGroup(replacing: .printItem) {

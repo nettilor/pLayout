@@ -465,6 +465,48 @@ final class WorkbookTests: XCTestCase {
         XCTAssertEqual(combined, ["Plate 1", "Plate 2", "Wells", "Legend"])
     }
 
+    /// The save panel's plate scope: one plate id keeps exactly that plate's maps
+    /// and rows, and an id that matches nothing keeps the whole document rather
+    /// than exporting an empty workbook.
+    func testWorkbookCanCoverJustOnePlate() throws {
+        var layout = sampleLayout()
+        layout.plates.append(Plate(name: "Plate 2", format: .well6))
+
+        let only = try sheetNames(of: Exporter.workbook(
+            from: layout, sheetLayout: .sheetPerFactor, onlyPlate: layout.plates[1].id
+        ))
+        XCTAssertEqual(only, ["Plate 2 · Condition", "Plate 2 · Dose", "Wells", "Legend"])
+
+        let combined = try sheetNames(of: Exporter.workbook(
+            from: layout, sheetLayout: .allFactorsOneSheet, onlyPlate: layout.plates[0].id
+        ))
+        XCTAssertEqual(combined, ["Plate 1", "Wells", "Legend"])
+
+        let unknown = try sheetNames(of: Exporter.workbook(
+            from: layout, sheetLayout: .sheetPerFactor, onlyPlate: UUID()
+        ))
+        XCTAssertEqual(unknown.count, 6, "an unmatched id should keep every plate")
+    }
+
+    func testWorkbookScopeIsRememberedLikeTheArrangement() {
+        let key = "workbookScope"
+        let previous = UserDefaults.standard.string(forKey: key)
+        defer {
+            if let previous {
+                UserDefaults.standard.set(previous, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+
+        UserDefaults.standard.removeObject(forKey: key)
+        XCTAssertEqual(WorkbookScope.remembered, .allPlates)
+        WorkbookScope.activePlate.remember()
+        XCTAssertEqual(WorkbookScope.remembered, .activePlate)
+        UserDefaults.standard.set("everything-twice", forKey: key)
+        XCTAssertEqual(WorkbookScope.remembered, .allPlates, "garbage should fall back")
+    }
+
     func testCombinedSheetHeadsEachMapWithItsFactorName() throws {
         let data = Exporter.workbook(from: sampleLayout(), sheetLayout: .allFactorsOneSheet)
         let directory = try unzip(data)

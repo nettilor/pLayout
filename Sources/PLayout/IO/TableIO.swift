@@ -135,11 +135,42 @@ enum WorkbookLayout: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+/// Which plates an exported workbook covers. Chosen in the save panel beside the
+/// sheet arrangement, and remembered the same way. "Active" is relative — whichever
+/// plate is being looked at come the next export — so remembering it is safe.
+enum WorkbookScope: String, CaseIterable, Codable {
+    case allPlates
+    case activePlate
+
+    private static let defaultsKey = "workbookScope"
+
+    static var remembered: WorkbookScope {
+        UserDefaults.standard.string(forKey: defaultsKey)
+            .flatMap(WorkbookScope.init(rawValue:)) ?? .allPlates
+    }
+
+    func remember() {
+        UserDefaults.standard.set(rawValue, forKey: Self.defaultsKey)
+    }
+}
+
 enum Exporter {
 
     /// A full workbook: colour-coded plate maps arranged per `sheetLayout`, plus a
     /// tidy one-row-per-well sheet for analysis and a legend.
-    static func workbook(from layout: Layout, sheetLayout: WorkbookLayout = .sheetPerFactor) -> Data {
+    static func workbook(
+        from layout: Layout, sheetLayout: WorkbookLayout = .sheetPerFactor,
+        onlyPlate plateID: UUID? = nil
+    ) -> Data {
+        // The scope is one filter, applied here so the maps, the Wells sheet and the
+        // legend can never disagree about which plates are in the file. An id that
+        // matches nothing keeps the whole document rather than emitting an empty
+        // workbook for a plate deleted mid-export.
+        var layout = layout
+        if let plateID {
+            let kept = layout.plates.filter { $0.id == plateID }
+            if !kept.isEmpty { layout.plates = kept }
+        }
         var sheets: [XLSX.Sheet] = []
 
         switch sheetLayout {

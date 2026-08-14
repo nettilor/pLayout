@@ -28,13 +28,62 @@ struct PreferencesView: View {
                         choice("Well shape", selection: $preferences.newDocumentWellShape)
                         note(preferences.newDocumentWellShape.note)
                     }
+                    section("Empty wells") {
+                        HStack(spacing: 10) {
+                            ColorPicker("", selection: emptyWellColor, supportsOpacity: false)
+                                .labelsHidden()
+                            Text("Background of wells with no value")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Reset to Default") { preferences.emptyWellColorHex = nil }
+                                .disabled(preferences.emptyWellColorHex == nil)
+                        }
+                        note(preferences.emptyWellColorHex == nil
+                            ? "The default follows light and dark mode."
+                            : "A chosen colour is used as it is, everywhere — light mode, dark mode, Overview's backdrop, exports and print.")
+                    }
+                    section("Plate text") {
+                        HStack(spacing: 10) {
+                            Text("Font")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                            Picker("", selection: $preferences.canvasFontFamily) {
+                                Text("System").tag(String?.none)
+                                Divider()
+                                ForEach(Self.fontFamilies, id: \.self) { family in
+                                    Text(family).tag(String?.some(family))
+                                }
+                            }
+                            .labelsHidden()
+                        }
+                        HStack(spacing: 10) {
+                            Text("Size")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                            Slider(value: $preferences.canvasFontScale, in: 0.7...1.8, step: 0.05)
+                            Text("\(Int((preferences.canvasFontScale * 100).rounded())) %")
+                                .font(.callout.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .frame(width: 44, alignment: .trailing)
+                        }
+                        note("Applies to the plate — wells, headers and the line key — and travels into exports and print. The window's own controls keep the system font.")
+                    }
+                    section("New conditions") {
+                        choice("Colours", selection: $preferences.newConditionColors)
+                        note(preferences.newConditionColors.note)
+                    }
                     // Shown rather than described: what both settings are really about
                     // is how they look across light and dark conditions at once, which
                     // is exactly what a sentence cannot convey.
                     section("Preview") {
                         WellPreview(
                             textStyle: preferences.wellTextStyle,
-                            markerStyle: preferences.activeMarkerStyle
+                            markerStyle: preferences.activeMarkerStyle,
+                            customEmpty: preferences.customEmptyWellColor,
+                            labelFont: preferences.canvasFont(
+                                ofSize: 11 * CGFloat(preferences.canvasFontScale), weight: .semibold
+                            )
                         )
                     }
                 }
@@ -48,7 +97,30 @@ struct PreferencesView: View {
             }
             .padding(12)
         }
-        .frame(width: 460, height: 620)
+        .frame(width: 460, height: 930)
+    }
+
+    private static let fontFamilies = NSFontManager.shared.availableFontFamilies
+        .filter { !$0.hasPrefix(".") }
+        .sorted()
+
+    /// Shows the resolved default when nothing is chosen, so the swatch is never a
+    /// lie; writing to it makes the choice explicit. The default is a faint
+    /// translucent grey, which the picker's swatch would render over its own dark
+    /// backing as near-black — so it is flattened against the window background
+    /// first, which is what an empty well actually sits on.
+    private var emptyWellColor: Binding<Color> {
+        Binding(
+            get: {
+                let fill = preferences.emptyWellFill(exportMode: false)
+                guard fill.alphaComponent < 1 else { return Color(nsColor: fill) }
+                let flat = NSColor.windowBackgroundColor.blended(
+                    withFraction: fill.alphaComponent, of: fill.withAlphaComponent(1)
+                ) ?? fill
+                return Color(nsColor: flat)
+            },
+            set: { preferences.emptyWellColorHex = NSColor($0).hexString }
+        )
     }
 
     private func section(
@@ -98,6 +170,8 @@ struct PreferencesView: View {
 private struct WellPreview: View {
     let textStyle: WellTextStyle
     let markerStyle: ActiveMarkerStyle
+    let customEmpty: NSColor?
+    let labelFont: NSFont
 
     private static let samples: [(hex: String, name: String)] = [
         ("#F1CE63", "Vehicle"),
@@ -120,11 +194,11 @@ private struct WellPreview: View {
             // Overview's neutral tile has no colour of its own to contrast against, so
             // it follows the ink rather than the other way round.
             well(
-                fill: textStyle.prefersDarkNeutral
+                fill: customEmpty ?? (textStyle.prefersDarkNeutral
                     ? NSColor(white: 0.32, alpha: 1)
-                    : NSColor.quaternaryLabelColor.withAlphaComponent(0.18),
+                    : NSColor.quaternaryLabelColor.withAlphaComponent(0.18)),
                 marker: nil,
-                ink: textStyle.neutralInk,
+                ink: customEmpty.map { $0.labelInk(textStyle) } ?? textStyle.neutralInk,
                 name: "Overview"
             )
         }
@@ -136,7 +210,7 @@ private struct WellPreview: View {
                 .fill(Color(nsColor: marker ?? .clear))
                 .frame(width: 6, height: 13)
             Text(name)
-                .font(.system(size: 11, weight: .semibold))
+                .font(Font(labelFont))
                 .lineLimit(1)
                 .foregroundStyle(Color(nsColor: ink))
             Spacer(minLength: 0)

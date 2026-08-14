@@ -22,6 +22,19 @@ Swift Package Manager, no third-party dependencies. Requires macOS 14 or later.
 Like other document-based Mac apps, it opens a file picker at launch — `⌘N`, or
 the **New Document** button in that panel, starts an empty 96-well plate.
 
+## Install without building
+
+Each release on the [releases page](https://github.com/nettilor/pLayout/releases)
+carries a ready-made `pLayout-x.y.dmg` for macOS 14 or later, Apple Silicon and
+Intel both. Open it, drag pLayout into Applications, and follow the three steps
+drawn in the window: macOS blocks the first launch because the app is not
+notarized (that needs a paid Apple developer account). Click **Done** rather
+than *Move to Trash*, open **System Settings → Privacy & Security**, scroll
+down, and press **Open Anyway**. It is asked for once, and never again.
+
+`Tools/make_dmg.sh` is what packages a release — a universal build in a disk
+image whose window carries those instructions.
+
 ## The model: factors, not just labels
 
 Most plate maps have more than one variable. A document holds a list of **factors**
@@ -196,6 +209,30 @@ starting point: the sidebar keeps its own *Round wells* checkbox, so one layout 
 differ without changing the default, and changing the default leaves open windows
 alone.
 
+**New condition colours** — where the palette starts when a condition is created.
+*Start the palette over per factor* is the default: every factor's first condition is
+the same familiar blue, which is harmless while each factor colours only its own line
+of a well. *Never repeat a colour* promises every condition in the document its own —
+the twenty hues first, then lighter and darker takes of each — which earns its keep
+in the stacked modes, where two factors sharing a blue would put identical rails in
+one well. The swatch grid's already-used dot widens to the whole document to match,
+and Recolour from Palette keeps the promise too. Dose-series ramps are left alone: a
+dilution series is one hue by design.
+
+**Empty wells** — the background of wells with no value. The default is a faint
+grey that follows light and dark mode; pick a colour and it is used as it is,
+everywhere — including Overview, whose tiles are exactly this backdrop, and
+exports and print. The text on those tiles picks its ink against your colour the
+same way it does on a painted well. **Reset to Default** puts the
+appearance-following behaviour back, rather than a frozen copy of the colour.
+
+**Plate text** — the plate's typeface and size. The font list is every family
+installed on the Mac, with the system font as the default; the size is a
+percentage laid over the sizes the app computes, because label sizes follow the
+well size and the fitting is measured rather than assumed. Both apply to the
+plate — wells, headers, the line key — and travel into exports and print. The
+window's own controls keep the system font, as a Mac app should.
+
 The first two are shown in a live preview across light and dark conditions, which is
 the quickest way to see what each one costs.
 
@@ -222,6 +259,12 @@ pasted block still has its row/column headers, they are detected and stripped.
   | --- | --- |
   | One sheet per factor | A separate tab per factor — easiest to paste elsewhere |
   | All factors on one sheet | One tab per plate, each map headed by its factor name |
+
+  With several plates in the file, a second control chooses whether the workbook
+  covers **all plates** — the default — or **just the plate you are looking at**,
+  named in the menu so there is no guessing which one that is. Both choices are
+  remembered for the next export; a single-plate document hides the control,
+  since it would change nothing.
 - **Tidy CSV (`⇧⌘E`)** — just the one-row-per-well table.
 - **Plate image** — PNG or vector PDF of the plate for a lab notebook or figure.
 - **Print (`⌘P`)** — the plate exactly as displayed, scaled to fill one page. The

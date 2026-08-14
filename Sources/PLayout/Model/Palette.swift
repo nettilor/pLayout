@@ -17,6 +17,27 @@ enum Palette {
         categorical[((index % categorical.count) + categorical.count) % categorical.count]
     }
 
+    /// Hex normalised the way `matches` compares, so it can live in a `Set`.
+    static func normalized(_ hex: String) -> String {
+        NSColor(hex: hex)?.hexString ?? hex.uppercased()
+    }
+
+    /// The first colour not already in `used`: the categorical hues in order, then a
+    /// take on each from its shade column once the plain hues are spoken for — darker
+    /// rows first, because a darker take separates from its own base far better than a
+    /// tint does. About a hundred colours before it gives up and falls back to the
+    /// plain per-factor cycle, which no real document reaches.
+    static func firstColor(avoiding used: Set<String>, fallbackIndex: Int) -> String {
+        for hex in categorical where !used.contains(normalized(hex)) { return hex }
+        for row in [3, 1, 4, 0] {
+            for hue in categorical {
+                let candidate = shades(of: hue)[row]
+                if !used.contains(normalized(candidate)) { return candidate }
+            }
+        }
+        return color(at: fallbackIndex)
+    }
+
     // MARK: - The swatch grid
 
     /// A set of hues offered in the colour popover, one per column of the grid.

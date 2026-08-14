@@ -113,6 +113,143 @@ final class RenderPreviewTests: XCTestCase {
         }
     }
 
+    /// The empty-well background is a Settings choice, and the canvas has to honour
+    /// it — pinned at the pixel, in the centre of a well cleared of every factor.
+    func testEmptyWellsTakeTheCustomBackground() throws {
+        let previous = Preferences.shared.emptyWellColorHex
+        Preferences.shared.emptyWellColorHex = "#3A5F0B"
+        defer { Preferences.shared.emptyWellColorHex = previous }
+
+        let editor = demoEditor()
+        // Away from A1, where the keyboard cursor rests and draws its veil over
+        // whatever this test would have sampled. The reference well keeps its level,
+        // whose colour is set to the same hex: the assertion is that an empty well is
+        // drawn exactly like anything painted that colour, which also keeps the test
+        // honest across whatever colourspace the offscreen backing store uses.
+        editor.document.mutate("clear", undoManager: nil) { layout in
+            let well = layout.plates[0].format.index(row: 5, col: 8)
+            for factor in layout.factors {
+                layout.plates[0].setLevelID(nil, factor: factor.id, well: well)
+            }
+            layout.factors[0].levels[3].colorHex = "#3A5F0B"
+        }
+        editor.showSecondaryFactors = false
+        editor.selection = nil
+
+        let frame = NSRect(x: 0, y: 0, width: 940, height: 560)
+        let window = NSWindow(
+            contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false
+        )
+        let canvas = PlateCanvasView(frame: frame)
+        canvas.attach(editor: editor)
+        window.contentView = canvas
+        canvas.layoutSubtreeIfNeeded()
+
+        let png = try XCTUnwrap(canvas.pngData())
+        let rep = try XCTUnwrap(NSBitmapImageRep(data: png))
+        let scale = CGFloat(rep.pixelsWide) / frame.width
+        let geo = PlateGeometry(format: .well96, bounds: frame)
+        // Sampled above centre, where the filled reference well's label is not.
+        func sample(row: Int, col: Int) throws -> String {
+            let rect = geo.cellRect(row: row, col: col)
+            let point = (x: rect.midX, y: rect.midY - geo.cell * 0.25)
+            return try XCTUnwrap(
+                rep.colorAt(x: Int(point.x * scale), y: Int(point.y * scale))
+            ).hexString
+        }
+        // Column 11 is painted with the "Blank" level, recoloured to the same hex.
+        XCTAssertEqual(try sample(row: 5, col: 8), try sample(row: 5, col: 11))
+        // And the preference did change the well: DMSO's column is nothing like olive.
+        XCTAssertNotEqual(try sample(row: 5, col: 8), try sample(row: 5, col: 0))
+    }
+
+    /// Overview is the stacked pills on an empty-well backdrop, so a chosen
+    /// empty-well colour is that backdrop too: an Overview tile must match an
+    /// empty well pixel-for-pixel, and both must differ from the default.
+    func testOverviewTilesTakeTheCustomBackgroundToo() throws {
+        let previous = Preferences.shared.emptyWellColorHex
+        defer { Preferences.shared.emptyWellColorHex = previous }
+
+        // A 24-well plate leaves a generous band of bare tile above the stack.
+        func rendered(mode: WellLabelMode) throws -> NSBitmapImageRep {
+            let editor = demoEditor()
+            editor.document.mutate("setup", undoManager: nil) { layout in
+                layout.plates[0].changeFormat(to: .well24)
+                let well = layout.plates[0].format.index(row: 2, col: 3)
+                for factor in layout.factors {
+                    layout.plates[0].setLevelID(nil, factor: factor.id, well: well)
+                }
+            }
+            editor.setWellLabelMode(mode)
+            editor.selection = nil
+
+            let frame = NSRect(x: 0, y: 0, width: 940, height: 560)
+            let window = NSWindow(
+                contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false
+            )
+            let canvas = PlateCanvasView(frame: frame)
+            canvas.attach(editor: editor)
+            window.contentView = canvas
+            canvas.layoutSubtreeIfNeeded()
+            return try XCTUnwrap(NSBitmapImageRep(data: XCTUnwrap(canvas.pngData())))
+        }
+
+        func tilePixel(_ rep: NSBitmapImageRep) throws -> String {
+            let frame = NSRect(x: 0, y: 0, width: 940, height: 560)
+            let scale = CGFloat(rep.pixelsWide) / frame.width
+            let geo = PlateGeometry(format: .well24, bounds: frame)
+            let cell = geo.cellRect(row: 2, col: 3)
+            let inset = PlateCanvasView.bodyInset(cell: geo.cell)
+            return try XCTUnwrap(rep.colorAt(
+                x: Int(cell.midX * scale),
+                y: Int((cell.minY + inset + 6) * scale)
+            )).hexString
+        }
+
+        Preferences.shared.emptyWellColorHex = "#3A5F0B"
+        let overviewTile = try tilePixel(rendered(mode: .overview))
+        let emptyWell = try tilePixel(rendered(mode: .none))
+        XCTAssertEqual(overviewTile, emptyWell)
+
+        Preferences.shared.emptyWellColorHex = nil
+        XCTAssertNotEqual(try tilePixel(rendered(mode: .overview)), overviewTile)
+    }
+
+    /// The plate-text settings have to reach the drawing: a scaled or refonted
+    /// canvas cannot render byte-identical to the default one.
+    func testPlateTextSettingsChangeTheRender() throws {
+        let previousFamily = Preferences.shared.canvasFontFamily
+        let previousScale = Preferences.shared.canvasFontScale
+        defer {
+            Preferences.shared.canvasFontFamily = previousFamily
+            Preferences.shared.canvasFontScale = previousScale
+        }
+
+        func rendered() throws -> Data {
+            let editor = demoEditor()
+            let frame = NSRect(x: 0, y: 0, width: 940, height: 560)
+            let window = NSWindow(
+                contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false
+            )
+            let canvas = PlateCanvasView(frame: frame)
+            canvas.attach(editor: editor)
+            window.contentView = canvas
+            canvas.layoutSubtreeIfNeeded()
+            return try XCTUnwrap(canvas.pngData())
+        }
+
+        Preferences.shared.canvasFontFamily = nil
+        Preferences.shared.canvasFontScale = 1.0
+        let plain = try rendered()
+
+        Preferences.shared.canvasFontScale = 1.5
+        XCTAssertNotEqual(try rendered(), plain, "a 150 % size rendered identically")
+
+        Preferences.shared.canvasFontScale = 1.0
+        Preferences.shared.canvasFontFamily = "Georgia"
+        XCTAssertNotEqual(try rendered(), plain, "a serif face rendered identically")
+    }
+
     /// Every shape, at every canvas size, must be drawn entirely inside the rect it
     /// was handed — anything outside is invisible and unclickable.
     func testGeometryNeverOverflowsItsBounds() {

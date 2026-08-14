@@ -1,9 +1,16 @@
 #!/bin/bash
 # Builds pLayout.app into ./build
+# --universal compiles for Apple Silicon and Intel both, for a distributable build.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-swift build -c release
+if [ "${1:-}" = "--universal" ]; then
+    swift build -c release --arch arm64 --arch x86_64
+    BINARY=".build/apple/Products/Release/PLayout"
+else
+    swift build -c release
+    BINARY=".build/release/PLayout"
+fi
 
 APP_NAME="pLayout"
 EXEC_NAME="PLayout"
@@ -15,7 +22,7 @@ fi
 
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
-cp ".build/release/${EXEC_NAME}" "$APP_DIR/Contents/MacOS/${EXEC_NAME}"
+cp "$BINARY" "$APP_DIR/Contents/MacOS/${EXEC_NAME}"
 cp "Resources/Info.plist" "$APP_DIR/Contents/Info.plist"
 if [ -f "Resources/AppIcon.icns" ]; then
     cp "Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
