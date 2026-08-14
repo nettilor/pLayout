@@ -25,6 +25,7 @@ final class PlateEditor: ObservableObject {
     @Published var transientMessage: String = ""
     /// Set by the menu bar; ContentView presents the sheets off these.
     @Published var showingSeriesSheet = false
+    @Published var showingXYFillSheet = false
     @Published var showingCustomFormatSheet = false
     /// 1 means "whole plate in view", which is also the minimum.
     @Published private(set) var zoomLevel: CGFloat = 1
@@ -910,6 +911,111 @@ final class PlateEditor: ObservableObject {
         }
         armedLevelID = activeFactor?.levels.first?.id
         flash("Filled \(steps)-point series: \(values.first ?? "") → \(values.last ?? "")")
+    }
+
+    // MARK: - XY position fill
+
+    struct XYFillSpec {
+        enum Pattern: String, CaseIterable, Identifiable {
+            case acrossColumns, downRows, serpentine
+            var id: String { rawValue }
+            var label: String {
+                switch self {
+                case .acrossColumns: return "Across columns →"
+                case .downRows: return "Down rows ↓"
+                case .serpentine: return "Serpentine ⇄"
+                }
+            }
+        }
+        var pattern: Pattern = .acrossColumns
+    }
+
+    static let xyFactorName = "XY"
+
+    /// The wells an XY fill would number, in the order the pattern walks them.
+    /// No selection means the whole plate — and so does a single well, because
+    /// that is just the resting cursor, and one imaging position is never the ask.
+    func xyFillWells(_ spec: XYFillSpec) -> [Int] {
+        guard let plate else { return [] }
+        let format = plate.format
+        let chosen = selection.flatMap { $0.isSingleWell ? nil : $0 }
+        let range = (chosen ?? .wholePlate(format)).clamped(to: format)
+        var out: [Int] = []
+        out.reserveCapacity(range.wellCount)
+        switch spec.pattern {
+        case .acrossColumns:
+            for row in range.minRow...range.maxRow {
+                for col in range.minCol...range.maxCol { out.append(format.index(row: row, col: col)) }
+            }
+        case .downRows:
+            for col in range.minCol...range.maxCol {
+                for row in range.minRow...range.maxRow { out.append(format.index(row: row, col: col)) }
+            }
+        case .serpentine:
+            for (i, row) in (range.minRow...range.maxRow).enumerated() {
+                let cols = i.isMultiple(of: 2)
+                    ? Array(range.minCol...range.maxCol)
+                    : Array((range.minCol...range.maxCol).reversed())
+                for col in cols { out.append(format.index(row: row, col: col)) }
+            }
+        }
+        return out
+    }
+
+    /// XY01, XY02, … — two digits like the instrument names its positions,
+    /// widening only when the count outgrows them (XY001… on a 384).
+    static func xyNames(count: Int) -> [String] {
+        guard count > 0 else { return [] }
+        let width = max(2, String(count).count)
+        return (1...count).map { String(format: "XY%0\(width)d", $0) }
+    }
+
+    /// Same guard and reason as `openSeriesSheet`.
+    func openXYFillSheet() {
+        guard !isOverview else { return flashOverviewIsReadOnly() }
+        showingXYFillSheet = true
+    }
+
+    /// Numbers the wells as Keyence-style imaging positions: an "XY" factor whose
+    /// levels run XY01… in the order the microscope will visit them.
+    func applyXYFill(_ spec: XYFillSpec) {
+        guard !isOverview else { return flashOverviewIsReadOnly() }
+        let wells = xyFillWells(spec)
+        let index = plateIndex
+        guard !wells.isEmpty, index >= 0 else { return }
+        let names = Self.xyNames(count: wells.count)
+
+        // Re-running renumbers the one XY factor rather than growing a second,
+        // and keeps the hue it already has so the plate does not change colour.
+        let existing = layout.factors.first {
+            $0.name.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare(Self.xyFactorName) == .orderedSame
+        }
+        let factorID = existing?.id ?? UUID()
+        let baseHex = existing?.levels.first?.colorHex
+            ?? Self.newLevelColor(in: layout, fallback: layout.factors.count)
+        let ramp = Palette.ramp(count: wells.count, baseHex: baseHex)
+
+        edit("XY Position Fill") { layout in
+            let fi: Int
+            if let i = layout.factorIndex(id: factorID) {
+                fi = i
+            } else {
+                layout.factors.append(Factor(id: factorID, name: Self.xyFactorName))
+                fi = layout.factors.count - 1
+            }
+            guard layout.plates.indices.contains(index) else { return }
+            for (k, name) in names.enumerated() {
+                let id = layout.factors[fi].ensureLevel(named: name)
+                // The ramp stretches with the count, so an existing level's colour
+                // is rewritten too — a re-run must stay one smooth gradient.
+                if let li = layout.factors[fi].levels.firstIndex(where: { $0.id == id }) {
+                    layout.factors[fi].levels[li].colorHex = ramp[k]
+                }
+                layout.plates[index].setLevelID(id, factor: factorID, well: wells[k])
+            }
+        }
+        setActiveFactor(factorID)
+        flash("Numbered \(wells.count) positions: \(names.first ?? "") → \(names.last ?? "")")
     }
 
     /// Shuffles the existing values inside the selection — randomised placement

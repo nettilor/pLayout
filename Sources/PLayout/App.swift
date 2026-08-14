@@ -117,6 +117,8 @@ struct PlateCommands: Commands {
 
             Button("Series Fill…") { editor?.openSeriesSheet() }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
+            Button("XY Position Fill…") { editor?.openXYFillSheet() }
+                .keyboardShortcut("y", modifiers: [.command, .shift])
             Button("Randomise Selection") { editor?.randomizeSelection() }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
 

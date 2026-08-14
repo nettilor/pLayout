@@ -317,6 +317,18 @@ them high-to-low and colours them as a light-to-dark ramp.
 **Randomise** shuffles the assigned values inside the selection, keeping the
 counts, to guard against plate position effects.
 
+## Imaging positions
+
+**XY Position Fill** (Plate menu, or `⇧⌘Y`) numbers wells the way a Keyence
+microscope names its imaging positions: an **XY** factor whose levels run
+`XY01`, `XY02`, … in the order the stage will visit them — across columns, down
+rows, or serpentine. It covers the selection, or the whole plate when nothing
+(or just the cursor) is selected, and colours the positions as one light-to-dark
+ramp so the scan path is visible on the plate. Running it again renumbers the
+same factor rather than adding another, so switching pattern is one more pass.
+Positions export like any other factor, which is the point: the workbook's
+`Wells` sheet ties every image number to what was in that well.
+
 ## Multiple plates
 
 A document can hold several plates that share one set of factors — useful for

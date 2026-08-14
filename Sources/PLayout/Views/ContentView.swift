@@ -40,6 +40,9 @@ struct ContentView: View {
         .sheet(isPresented: $editor.showingSeriesSheet) {
             SeriesFillSheet(editor: editor)
         }
+        .sheet(isPresented: $editor.showingXYFillSheet) {
+            XYFillSheet(editor: editor)
+        }
         .sheet(isPresented: $editor.showingCustomFormatSheet) {
             CustomFormatSheet(editor: editor)
         }
