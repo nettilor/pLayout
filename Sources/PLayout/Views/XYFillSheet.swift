@@ -7,11 +7,23 @@ struct XYFillSheet: View {
     @ObservedObject var editor: PlateEditor
     @Environment(\.dismiss) private var dismiss
 
-    @State private var spec = PlateEditor.XYFillSpec()
+    @State private var spec: PlateEditor.XYFillSpec
+    @State private var gradientColor: Color
 
     /// Chips beyond this stay behind the "→ XY96" tail; a 1536-well preview
     /// would otherwise build 1536 views for a strip nobody scrolls to the end of.
     private let previewLimit = 16
+
+    init(editor: PlateEditor) {
+        self.editor = editor
+        // The picker starts on the colour the fill would use anyway, so leaving it
+        // alone is exactly the automatic behaviour.
+        let existing = editor.layout.factors.first { $0.name == PlateEditor.xyFactorName }
+        let hex = existing?.levels.first?.colorHex
+            ?? PlateEditor.newLevelColor(in: editor.layout, fallback: editor.layout.factors.count)
+        _spec = State(initialValue: .init(baseHex: hex))
+        _gradientColor = State(initialValue: Color(nsColor: NSColor(hex: hex) ?? .systemBlue))
+    }
 
     private var wellCount: Int { editor.xyFillWells(spec).count }
     private var names: [String] { PlateEditor.xyNames(count: wellCount) }
@@ -36,9 +48,14 @@ struct XYFillSheet: View {
                     }
                 }
                 .pickerStyle(.segmented)
+
+                ColorPicker("Gradient colour", selection: $gradientColor, supportsOpacity: false)
+                    .onChange(of: gradientColor) { _, newValue in
+                        spec.baseHex = NSColor(newValue).usingColorSpace(.sRGB)?.hexString
+                    }
             }
             .formStyle(.grouped)
-            .frame(height: 76)
+            .frame(height: 130)
 
             VStack(alignment: .leading, spacing: 5) {
                 Text("Preview")
@@ -95,13 +112,16 @@ struct XYFillSheet: View {
     }
 
     private var targetDescription: String {
-        guard let selection = editor.selection else { return "the whole plate" }
-        return selection.isSingleWell ? "the whole plate" : "\(selection.rowCount)×\(selection.colCount) wells"
+        if let custom = editor.customWells, !custom.isEmpty {
+            return "the \(custom.count) selected wells"
+        }
+        guard let selection = editor.selection, !selection.isSingleWell else { return "the whole plate" }
+        return "\(selection.rowCount)×\(selection.colCount) wells"
     }
 
     private var ramp: [String] {
-        let existing = editor.layout.factors.first { $0.name == PlateEditor.xyFactorName }
-        let base = existing?.levels.first?.colorHex
+        let base = spec.baseHex
+            ?? editor.layout.factors.first { $0.name == PlateEditor.xyFactorName }?.levels.first?.colorHex
             ?? PlateEditor.newLevelColor(in: editor.layout, fallback: editor.layout.factors.count)
         return Palette.ramp(count: max(wellCount, 1), baseHex: base)
     }

@@ -118,6 +118,8 @@ so deleting a template never affects a layout that used it.
 | `⇧⌘O` | Overview — every factor at once, nothing armed; again to go back |
 | drag | Paint a rectangle of wells |
 | `⌘`-drag | Free-hand brush |
+| `⌘`-click | Add or remove one well from the selection |
+| `⌘`-drag, nothing armed | Add a rectangle to the selection |
 | `⌥`-drag | Erase |
 | click `A` or `1` header | Paint a whole row or column |
 | click the corner | Turn the plate 90°, and back again (`⇧⌘L`) |
@@ -323,9 +325,11 @@ counts, to guard against plate position effects.
 microscope names its imaging positions: an **XY** factor whose levels run
 `XY01`, `XY02`, … in the order the stage will visit them — across columns, down
 rows, or serpentine. It covers the selection, or the whole plate when nothing
-(or just the cursor) is selected, and colours the positions as one light-to-dark
-ramp so the scan path is visible on the plate. Running it again renumbers the
-same factor rather than adding another, so switching pattern is one more pass.
+(or just the cursor) is selected — and a `⌘`-click selection is numbered exactly
+as it stands, so wells not worth imaging are simply skipped. The positions are
+coloured as one light-to-dark ramp, in a hue of your choosing, so the scan path
+is visible on the plate. Running it again renumbers the same factor rather than
+adding another, so switching pattern is one more pass.
 Positions export like any other factor, which is the point: the workbook's
 `Wells` sheet ties every image number to what was in that well.
 

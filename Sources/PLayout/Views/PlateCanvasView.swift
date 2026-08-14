@@ -246,6 +246,10 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     private var dragAnchorWell: WellPos?
     private var dragAnchorLine = 0
     private var freeformBrush = false
+    /// The selection as it stood at ⌘-mouse-down, so a drag that follows the toggle
+    /// can replay "base plus dragged rectangle" instead of accumulating every
+    /// intermediate rectangle the cursor passed through.
+    private var customDragBase: Set<WellPos>?
 
     /// Wells the in-progress drag will write when the mouse comes up.
     private var pendingWells: Set<Int> = []
@@ -329,6 +333,19 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         // correct on its own terms, including when a test sets the mode directly.
         let factor = mode.isOverview ? nil : editor.activeFactor
         let selection = editor.selection?.clamped(to: format)
+        let customSelection = editor.customWells
+        let selectedRows: Set<Int>
+        let selectedCols: Set<Int>
+        if let customSelection {
+            selectedRows = Set(customSelection.map(\.row))
+            selectedCols = Set(customSelection.map(\.col))
+        } else if let selection {
+            selectedRows = Set(selection.minRow...selection.maxRow)
+            selectedCols = Set(selection.minCol...selection.maxCol)
+        } else {
+            selectedRows = []
+            selectedCols = []
+        }
 
         (exportMode ? NSColor.white : NSColor.windowBackgroundColor).setFill()
         bounds.fill()
@@ -336,7 +353,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         NSColor.textBackgroundColor.setFill()
         NSBezierPath(roundedRect: geo.gridRect, xRadius: 3, yRadius: 3).fill()
 
-        drawHeaders(geo: geo, selection: selection)
+        drawHeaders(geo: geo, selectedRows: selectedRows, selectedCols: selectedCols)
 
         let plan = labelPlan(cell: geo.cell, mode: mode, factorCount: editor.layout.factors.count)
         // Factors shown as text lines; anything left over may fall back to the colour stripe.
@@ -473,7 +490,20 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         guard !exportMode else { return }
 
         let accent = NSColor.controlAccentColor
-        if let selection {
+        if let customSelection {
+            // Discontiguous wells each get the rectangle treatment on their own —
+            // one big bounding box would claim wells the user deliberately left out.
+            accent.withAlphaComponent(0.10).setFill()
+            accent.setStroke()
+            for pos in customSelection {
+                guard format.contains(row: pos.row, col: pos.col) else { continue }
+                let rect = geo.cellRect(row: pos.row, col: pos.col)
+                NSBezierPath(rect: rect).fill()
+                let outline = NSBezierPath(rect: rect.insetBy(dx: 1, dy: 1))
+                outline.lineWidth = 2
+                outline.stroke()
+            }
+        } else if let selection {
             let selectionRect = geo.rect(of: selection)
             accent.withAlphaComponent(0.10).setFill()
             NSBezierPath(rect: selectionRect).fill()
@@ -816,7 +846,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     /// The letters and numbers follow the grid round: transposed, the letters run along
     /// the top and the numbers down the side. Each strip is drawn from the model axis it
     /// is labelling, so a highlighted header always means the same wells are selected.
-    private func drawHeaders(geo: PlateGeometry, selection: WellRange?) {
+    private func drawHeaders(geo: PlateGeometry, selectedRows: Set<Int>, selectedCols: Set<Int>) {
         let accent = NSColor.controlAccentColor
         let headerFontSize = max(7, min(min(geo.headerH * 0.55, geo.cell * 0.42), 12))
             * CGFloat(Preferences.shared.canvasFontScale)
@@ -841,10 +871,10 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         // have turned to face away from you.
         func label(_ well: WellPos, axisIsRow: Bool, at index: Int) -> (String, Bool) {
             if axisIsRow {
-                return (WellNaming.rowLabel(well.row), selection?.containsRow(well.row) ?? false)
+                return (WellNaming.rowLabel(well.row), selectedRows.contains(well.row))
             }
             let shown = index % numberStride == 0 || index == 0 ? "\(well.col + 1)" : ""
-            return (shown, selection?.containsCol(well.col) ?? false)
+            return (shown, selectedCols.contains(well.col))
         }
 
         for index in 0..<geo.displayCols {
@@ -1014,7 +1044,15 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         switch geo.hit(point) {
         case .well(let pos):
             dragKind = .wells
-            if extend, let anchor = editor.selection?.anchor {
+            if freeformBrush {
+                // ⌘-click toggles the well in and out of the selection, the macOS
+                // standard. The mouse may still turn out to be dragging — the brush
+                // when a level is armed, an added rectangle when nothing is — and
+                // both replay from the selection as it stood before the toggle.
+                dragAnchorWell = pos
+                customDragBase = editor.selectionAsPositions
+                editor.toggleWell(pos)
+            } else if extend, let anchor = editor.selection?.anchor ?? editor.customFocus {
                 dragAnchorWell = anchor
                 editor.select(WellRange(anchor: anchor, focus: pos))
             } else {
@@ -1067,8 +1105,13 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         case .wells:
             let pos = geo.nearestWell(point)
             if freeformBrush {
-                editor.select(WellRange(anchor: dragAnchorWell ?? pos, focus: pos))
-                pendingWells.insert(geo.format.index(row: pos.row, col: pos.col))
+                if isPaintingDrag {
+                    editor.select(WellRange(anchor: dragAnchorWell ?? pos, focus: pos))
+                    pendingWells.insert(geo.format.index(row: pos.row, col: pos.col))
+                } else if let base = customDragBase {
+                    // ⌘-drag with nothing armed adds a rectangle to the selection.
+                    editor.addToSelection(base: base, rect: WellRange(anchor: dragAnchorWell ?? pos, focus: pos))
+                }
                 needsDisplay = true
                 return
             }
@@ -1099,6 +1142,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
             isPaintingDrag = false
             pendingWells.removeAll()
             freeformBrush = false
+            customDragBase = nil
             needsDisplay = true
         }
         guard isPaintingDrag, !pendingWells.isEmpty else { return }

@@ -114,6 +114,37 @@ final class XYFillTests: XCTestCase {
         XCTAssertEqual(positionName(editor, row: 7, col: 0), "XY85")
     }
 
+    // MARK: - Discontiguous selections
+
+    func testACustomSelectionIsNumberedInPatternOrder() {
+        let corners: Set<WellPos> = [
+            WellPos(row: 0, col: 0), WellPos(row: 0, col: 2),
+            WellPos(row: 1, col: 0), WellPos(row: 1, col: 2),
+        ]
+
+        var editor = makeEditor()
+        editor.customWells = corners
+        editor.applyXYFill(.init(pattern: .acrossColumns))
+        XCTAssertEqual(xyFactor(editor)?.levels.count, 4)
+        XCTAssertEqual(positionName(editor, row: 0, col: 0), "XY01")
+        XCTAssertEqual(positionName(editor, row: 0, col: 2), "XY02")
+        XCTAssertEqual(positionName(editor, row: 1, col: 0), "XY03")
+        XCTAssertEqual(positionName(editor, row: 1, col: 2), "XY04")
+        XCTAssertNil(positionName(editor, row: 0, col: 1), "the gap between chosen wells stays out")
+
+        editor = makeEditor()
+        editor.customWells = corners
+        editor.applyXYFill(.init(pattern: .serpentine))
+        XCTAssertEqual(positionName(editor, row: 1, col: 2), "XY03", "the second selected row runs backwards")
+        XCTAssertEqual(positionName(editor, row: 1, col: 0), "XY04")
+
+        editor = makeEditor()
+        editor.customWells = corners
+        editor.applyXYFill(.init(pattern: .downRows))
+        XCTAssertEqual(positionName(editor, row: 1, col: 0), "XY02", "down rows walks the column first")
+        XCTAssertEqual(positionName(editor, row: 0, col: 2), "XY03")
+    }
+
     // MARK: - What the fill leaves active
 
     func testTheXYFactorBecomesActiveAndItsColoursRunAsOneRamp() {
@@ -126,6 +157,18 @@ final class XYFillTests: XCTestCase {
         let factor = xyFactor(editor)
         XCTAssertEqual(editor.activeFactorID, factor?.id)
         XCTAssertEqual(factor.map { $0.levels.map(\.colorHex) }, Palette.ramp(count: 96, baseHex: expectedBase))
+    }
+
+    func testAChosenGradientColourDrivesTheRamp() {
+        let editor = makeEditor()
+        editor.selection = nil
+        let chosen = Palette.color(at: 5)
+        editor.applyXYFill(.init(baseHex: chosen))
+
+        XCTAssertEqual(
+            xyFactor(editor).map { $0.levels.map(\.colorHex) },
+            Palette.ramp(count: 96, baseHex: chosen)
+        )
     }
 
     // MARK: - Undo

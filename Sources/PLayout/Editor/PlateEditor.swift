@@ -17,6 +17,13 @@ final class PlateEditor: ObservableObject {
     @Published var armedLevelID: UUID?
     /// nil means nothing is selected — clicking off the plate clears it.
     @Published var selection: WellRange? = WellRange(single: WellPos(row: 0, col: 0))
+    /// A discontiguous selection, entered with ⌘-click. Non-nil overrides `selection`;
+    /// rectangle-only operations (copy, paste, series fill) see "no selection" instead
+    /// of silently acting on a bounding box that includes wells the user excluded.
+    @Published var customWells: Set<WellPos>?
+    /// The last well ⌘-clicked or ⌘-dragged over, so ⇧-click and the arrow keys have
+    /// somewhere to resume the rectangular model from.
+    private(set) var customFocus: WellPos?
     @Published var hovered: WellPos?
     @Published var showSecondaryFactors = true
     /// Seeded from Preferences when the document opens; the sidebar toggle drives it
@@ -203,27 +210,84 @@ final class PlateEditor: ObservableObject {
 
     // MARK: - Selection & navigation
 
-    var hasSelection: Bool { selection != nil }
+    var hasSelection: Bool { customWells?.isEmpty == false || selection != nil }
 
     /// The wells an action would apply to, or an empty list when nothing is selected.
+    /// A discontiguous selection overrides the rectangle while it exists.
     var selectedWells: [Int] {
-        selection?.indices(in: format) ?? []
+        if let customWells {
+            let f = format
+            return customWells.map { f.index(row: $0.row, col: $0.col) }.sorted()
+        }
+        return selection?.indices(in: format) ?? []
+    }
+
+    /// The current selection as positions, whichever model it is in — the seed for
+    /// entering the discontiguous mode without losing what was already selected.
+    var selectionAsPositions: Set<WellPos> {
+        if let customWells { return customWells }
+        guard let range = selection?.clamped(to: format) else { return [] }
+        var out: Set<WellPos> = []
+        for row in range.minRow...range.maxRow {
+            for col in range.minCol...range.maxCol { out.insert(WellPos(row: row, col: col)) }
+        }
+        return out
+    }
+
+    /// ⌘-click, the macOS standard: add an unselected well, remove a selected one.
+    /// Entering this mode dissolves the rectangle into a set; any plain click, drag,
+    /// arrow or select-all puts the rectangular model back.
+    func toggleWell(_ pos: WellPos) {
+        guard format.contains(row: pos.row, col: pos.col) else { return }
+        var set = selectionAsPositions
+        if !set.insert(pos).inserted { set.remove(pos) }
+        customFocus = pos
+        selection = nil
+        customWells = set.isEmpty ? nil : set
+    }
+
+    /// ⌘-drag with nothing armed: adds a whole rectangle to the selection on top of
+    /// `base` — the set as it stood at mouse-down, so the live drag can be replayed
+    /// from it instead of accumulating every intermediate rectangle.
+    func addToSelection(base: Set<WellPos>, rect: WellRange) {
+        let clamped = rect.clamped(to: format)
+        var set = base
+        for row in clamped.minRow...clamped.maxRow {
+            for col in clamped.minCol...clamped.maxCol { set.insert(WellPos(row: row, col: col)) }
+        }
+        customFocus = clamped.focus
+        selection = nil
+        customWells = set
     }
 
     func select(_ range: WellRange) {
+        customWells = nil
         selection = range.clamped(to: format)
     }
 
     func selectAllWells() {
+        customWells = nil
         selection = .wholePlate(format)
     }
 
     func clearSelectionMarquee() {
+        customWells = nil
         selection = nil
     }
 
     func moveCursor(dRow: Int, dCol: Int, extend: Bool) {
         let f = format
+        // Arrowing out of a discontiguous selection collapses it onto the last well
+        // touched, the way every Mac list and table collapses on arrow keys.
+        if customWells != nil {
+            let from = customFocus ?? WellPos(row: 0, col: 0)
+            customWells = nil
+            selection = WellRange(single: WellPos(
+                row: min(max(from.row + dRow, 0), f.rows - 1),
+                col: min(max(from.col + dCol, 0), f.cols - 1)
+            ))
+            return
+        }
         // Arrowing with nothing selected starts again at A1.
         guard let current = selection else {
             selection = WellRange(single: WellPos(row: 0, col: 0))
@@ -438,6 +502,7 @@ final class PlateEditor: ObservableObject {
         let plate = Plate(name: layout.uniquePlateName(base: "Plate"), format: format)
         edit("Add Plate") { layout in layout.plates.append(plate) }
         activePlateID = plate.id
+        customWells = nil
         selection = WellRange(single: WellPos(row: 0, col: 0))
     }
 
@@ -489,6 +554,7 @@ final class PlateEditor: ObservableObject {
         }
         editPlate("Change Plate Format") { plate in plate.changeFormat(to: newFormat) }
         selection = selection?.clamped(to: newFormat)
+        customWells = clippingCustomWells(to: newFormat)
         return true
     }
 
@@ -683,7 +749,16 @@ final class PlateEditor: ObservableObject {
         }
         if let plate = layout.plates.first(where: { $0.id == activePlateID }) {
             selection = selection?.clamped(to: plate.format)
+            customWells = clippingCustomWells(to: plate.format)
         }
+    }
+
+    /// Unlike the rectangle, a discontiguous well cannot be clamped to the nearest
+    /// edge without landing on a well the user never chose — it is dropped instead.
+    private func clippingCustomWells(to format: PlateFormat) -> Set<WellPos>? {
+        guard let customWells else { return nil }
+        let kept = customWells.filter { format.contains(row: $0.row, col: $0.col) }
+        return kept.isEmpty ? nil : kept
     }
 
     // MARK: - Custom plate sizes
@@ -713,6 +788,11 @@ final class PlateEditor: ObservableObject {
 
     /// Copies the selection as tab-separated text — pastes straight into Excel.
     func copySelection(includeHeaders: Bool = false) {
+        // A discontiguous selection has no honest grid: a bounding box would copy
+        // wells the user deliberately excluded. Excel refuses this too.
+        guard customWells == nil else {
+            return flash("Copy needs a rectangular selection.")
+        }
         guard let plate, let selection else { return }
         guard let factor = activeFactor else {
             flash("No factor selected — click one in the sidebar to copy its values.")
@@ -743,6 +823,11 @@ final class PlateEditor: ObservableObject {
     }
 
     func cutSelection() {
+        // Refused as one piece: if the copy half cannot run, the clear half must not
+        // either, or a cut would destroy wells it never copied.
+        guard customWells == nil else {
+            return flash("Cut needs a rectangular selection.")
+        }
         copySelection()
         clearSelection()
     }
@@ -928,6 +1013,9 @@ final class PlateEditor: ObservableObject {
             }
         }
         var pattern: Pattern = .acrossColumns
+        /// Base hue for the position ramp. nil means automatic: the hue the XY
+        /// factor already has, else the next colour the palette would hand out.
+        var baseHex: String?
     }
 
     static let xyFactorName = "XY"
@@ -938,6 +1026,28 @@ final class PlateEditor: ObservableObject {
     func xyFillWells(_ spec: XYFillSpec) -> [Int] {
         guard let plate else { return [] }
         let format = plate.format
+        // A discontiguous selection is numbered as it stands — the pattern walks the
+        // chosen wells and skips the rest, which is exactly how positions are picked
+        // on the instrument when some wells are not worth imaging.
+        if let custom = customWells, !custom.isEmpty {
+            let inBounds = custom.filter { format.contains(row: $0.row, col: $0.col) }
+            let ordered: [WellPos]
+            switch spec.pattern {
+            case .acrossColumns:
+                ordered = inBounds.sorted { ($0.row, $0.col) < ($1.row, $1.col) }
+            case .downRows:
+                ordered = inBounds.sorted { ($0.col, $0.row) < ($1.col, $1.row) }
+            case .serpentine:
+                // Direction alternates by the row's rank among the rows that are
+                // actually selected, so the snake never wastes a pass on empty rows.
+                let byRow = Dictionary(grouping: inBounds, by: \.row)
+                ordered = byRow.keys.sorted().enumerated().flatMap { rank, row in
+                    let cols = byRow[row]!.sorted { $0.col < $1.col }
+                    return rank.isMultiple(of: 2) ? cols : cols.reversed()
+                }
+            }
+            return ordered.map { format.index(row: $0.row, col: $0.col) }
+        }
         let chosen = selection.flatMap { $0.isSingleWell ? nil : $0 }
         let range = (chosen ?? .wholePlate(format)).clamped(to: format)
         var out: [Int] = []
@@ -991,7 +1101,8 @@ final class PlateEditor: ObservableObject {
             $0.name.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare(Self.xyFactorName) == .orderedSame
         }
         let factorID = existing?.id ?? UUID()
-        let baseHex = existing?.levels.first?.colorHex
+        let baseHex = spec.baseHex
+            ?? existing?.levels.first?.colorHex
             ?? Self.newLevelColor(in: layout, fallback: layout.factors.count)
         let ramp = Palette.ramp(count: wells.count, baseHex: baseHex)
 

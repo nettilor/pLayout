@@ -205,11 +205,14 @@ struct ContentView: View {
         if let hovered = editor.hovered {
             return editor.summary(row: hovered.row, col: hovered.col)
         }
-        guard let focus = editor.selection?.focus else { return "" }
+        guard let focus = editor.selection?.focus ?? editor.customFocus else { return "" }
         return editor.summary(row: focus.row, col: focus.col)
     }
 
     private var selectionText: String {
+        if let custom = editor.customWells, !custom.isEmpty {
+            return "\(custom.count) well\(custom.count == 1 ? "" : "s") selected"
+        }
         guard let selection = editor.selection else { return "No selection" }
         let padded = editor.layout.padWellLabels
         let from = WellNaming.wellLabel(row: selection.minRow, col: selection.minCol, padded: padded)
