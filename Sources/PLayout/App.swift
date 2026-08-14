@@ -100,10 +100,12 @@ struct PlateCommands: Commands {
         CommandMenu("Plate") {
             Button("Fill Selection") { editor?.paintSelection() }
                 .keyboardShortcut(.return, modifiers: .command)
+            // ⌫ on the canvas clears the active factor; ⌘⌫ empties the wells
+            // completely. The menu carries the ⌘ variant — a bare-⌫ equivalent
+            // here would swallow Delete inside every rename field.
             Button("Clear Selection") { editor?.clearSelection() }
-                .keyboardShortcut(.delete, modifiers: .command)
             Button("Clear All Factors in Selection") { editor?.clearSelectionAllFactors() }
-                .keyboardShortcut(.delete, modifiers: [.command, .shift])
+                .keyboardShortcut(.delete, modifiers: .command)
             Button("Select All Wells") { editor?.selectAllWells() }
 
             Divider()

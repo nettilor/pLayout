@@ -24,6 +24,10 @@ final class PlateEditor: ObservableObject {
     /// The last well ⌘-clicked or ⌘-dragged over, so ⇧-click and the arrow keys have
     /// somewhere to resume the rectangular model from.
     private(set) var customFocus: WellPos?
+    /// ⌘-selected sidebar rows, for bulk deletion. Non-empty means painting is off —
+    /// there is no single armed condition while several rows are selected.
+    @Published var multiSelectedFactorIDs: Set<UUID> = []
+    @Published var multiSelectedLevelIDs: Set<UUID> = []
     @Published var hovered: WellPos?
     @Published var showSecondaryFactors = true
     /// Seeded from Preferences when the document opens; the sidebar toggle drives it
@@ -166,6 +170,11 @@ final class PlateEditor: ObservableObject {
         guard let factorID = activeFactorID, !wells.isEmpty,
               layout.factors.contains(where: { $0.id == factorID })
         else { return }
+        // Said out loud rather than silently ignored — a brush that does nothing
+        // reads as a bug (§ Overview taught the same lesson).
+        guard !isMultiSelecting else {
+            return flash("Painting is off while several rows are selected — click a single row to continue.")
+        }
         let name = actionName ?? (level == nil ? "Clear Wells" : "Paint Wells")
         editPlate(name) { plate in
             for well in wells { plate.setLevelID(level, factor: factorID, well: well) }
@@ -302,25 +311,109 @@ final class PlateEditor: ObservableObject {
             : WellRange(single: next)
     }
 
+    // MARK: - Sidebar multi-selection
+
+    /// ⌘-click in the sidebar lists, for deleting several rows at once. While either
+    /// set is non-empty there is no single armed condition, so painting is off; any
+    /// plain interaction — clicking a row, arming by number key, Escape — leaves it.
+    var isMultiSelecting: Bool {
+        !multiSelectedFactorIDs.isEmpty || !multiSelectedLevelIDs.isEmpty
+    }
+
+    func toggleFactorInMultiSelection(_ id: UUID) {
+        guard layout.factors.contains(where: { $0.id == id }) else { return }
+        var set = multiSelectedFactorIDs
+        // The active factor is the row already "selected", so it seeds the set —
+        // ⌘-clicking a second row reads as selecting both, like any Mac list.
+        if set.isEmpty, let active = activeFactorID, active != id { set.insert(active) }
+        if !set.insert(id).inserted { set.remove(id) }
+        if set.count <= 1 {
+            multiSelectedFactorIDs = []
+            if let only = set.first { setActiveFactor(only) }
+            return
+        }
+        multiSelectedLevelIDs = []
+        multiSelectedFactorIDs = set
+        armedLevelID = nil
+    }
+
+    func toggleLevelInMultiSelection(_ id: UUID) {
+        guard activeFactor?.levels.contains(where: { $0.id == id }) == true else { return }
+        var set = multiSelectedLevelIDs
+        if set.isEmpty, let armed = armedLevelID, armed != id { set.insert(armed) }
+        if !set.insert(id).inserted { set.remove(id) }
+        if set.count <= 1 {
+            multiSelectedLevelIDs = []
+            if let only = set.first { armLevel(only) }
+            return
+        }
+        multiSelectedFactorIDs = []
+        multiSelectedLevelIDs = set
+        armedLevelID = nil
+    }
+
+    /// A plain sidebar click on a condition row: arm it and leave multi-selection.
+    func armLevel(_ id: UUID) {
+        exitMultiSelection()
+        armedLevelID = id
+    }
+
+    private func exitMultiSelection() {
+        if !multiSelectedFactorIDs.isEmpty { multiSelectedFactorIDs = [] }
+        if !multiSelectedLevelIDs.isEmpty { multiSelectedLevelIDs = [] }
+    }
+
+    /// Deletes the ⌘-selected conditions as one undo step.
+    func deleteLevels(_ ids: Set<UUID>) {
+        guard let factorID = activeFactorID, !ids.isEmpty else { return }
+        edit("Delete Conditions") { layout in
+            for id in ids { layout.removeLevel(id, from: factorID) }
+        }
+        exitMultiSelection()
+        if armedLevelID == nil { armedLevelID = activeFactor?.levels.first?.id }
+    }
+
+    /// Deletes the ⌘-selected factors as one undo step, keeping at least one.
+    func deleteFactors(_ ids: Set<UUID>) {
+        guard !ids.isEmpty else { return }
+        var doomed = ids
+        if layout.factors.allSatisfy({ doomed.contains($0.id) }), let spare = layout.factors.first {
+            doomed.remove(spare.id)
+            flash("A layout needs at least one factor — \(spare.name) stays.")
+        }
+        guard !doomed.isEmpty else { return }
+        edit("Delete Factors") { layout in
+            for id in doomed { layout.removeFactor(id) }
+        }
+        exitMultiSelection()
+        if armedLevelID == nil, !isOverview { armedLevelID = activeFactor?.levels.first?.id }
+    }
+
     // MARK: - Level & factor hotkeys
 
     func armLevel(atIndex index: Int) {
         guard let factor = activeFactor, factor.levels.indices.contains(index) else { return }
+        exitMultiSelection()
         armedLevelID = factor.levels[index].id
     }
 
     func cycleLevel(by delta: Int) {
         guard let factor = activeFactor, !factor.levels.isEmpty else { return }
+        exitMultiSelection()
         let current = armedLevelID.flatMap { factor.index(of: $0) } ?? -1
         let count = factor.levels.count
         let next = ((current + delta) % count + count) % count
         armedLevelID = factor.levels[next].id
     }
 
-    func disarmLevel() { armedLevelID = nil }
+    func disarmLevel() {
+        exitMultiSelection()
+        armedLevelID = nil
+    }
 
     func setActiveFactor(_ id: UUID) {
         leaveOverview()
+        exitMultiSelection()
         activeFactorID = id
         armedLevelID = layout.factor(id: id)?.levels.first?.id
     }
@@ -751,6 +844,18 @@ final class PlateEditor: ObservableObject {
             selection = selection?.clamped(to: plate.format)
             customWells = clippingCustomWells(to: plate.format)
         }
+        // Undo and redo can delete ⌘-selected rows out from under the sets; a set
+        // pruned below two members is no longer a multi-selection at all.
+        let factorIDs = Set(layout.factors.map(\.id))
+        let prunedFactors = multiSelectedFactorIDs.intersection(factorIDs)
+        if prunedFactors != multiSelectedFactorIDs {
+            multiSelectedFactorIDs = prunedFactors.count > 1 ? prunedFactors : []
+        }
+        let levelIDs = Set(layout.factors.first { $0.id == activeFactorID }?.levels.map(\.id) ?? [])
+        let prunedLevels = multiSelectedLevelIDs.intersection(levelIDs)
+        if prunedLevels != multiSelectedLevelIDs {
+            multiSelectedLevelIDs = prunedLevels.count > 1 ? prunedLevels : []
+        }
     }
 
     /// Unlike the rectangle, a discontiguous well cannot be clamped to the nearest
@@ -1023,53 +1128,62 @@ final class PlateEditor: ObservableObject {
     /// The wells an XY fill would number, in the order the pattern walks them.
     /// No selection means the whole plate — and so does a single well, because
     /// that is just the resting cursor, and one imaging position is never the ask.
+    ///
+    /// The walk happens in *display* space: the fill mirrors what the user will do
+    /// at the instrument, holding the plate the way it is drawn, so a turned plate
+    /// numbers along the rows the user actually sees. The mapping is asked of
+    /// `PlateGeometry` rather than derived here — the rotation stays in one place.
     func xyFillWells(_ spec: XYFillSpec) -> [Int] {
         guard let plate else { return [] }
         let format = plate.format
-        // A discontiguous selection is numbered as it stands — the pattern walks the
-        // chosen wells and skips the rest, which is exactly how positions are picked
-        // on the instrument when some wells are not worth imaging.
+        let geo = PlateGeometry(
+            format: format, bounds: CGRect(x: 0, y: 0, width: 1000, height: 1000),
+            quarterTurns: quarterTurns
+        )
+
+        var shown: [WellPos] = []
         if let custom = customWells, !custom.isEmpty {
-            let inBounds = custom.filter { format.contains(row: $0.row, col: $0.col) }
-            let ordered: [WellPos]
-            switch spec.pattern {
-            case .acrossColumns:
-                ordered = inBounds.sorted { ($0.row, $0.col) < ($1.row, $1.col) }
-            case .downRows:
-                ordered = inBounds.sorted { ($0.col, $0.row) < ($1.col, $1.row) }
-            case .serpentine:
-                // Direction alternates by the row's rank among the rows that are
-                // actually selected, so the snake never wastes a pass on empty rows.
-                let byRow = Dictionary(grouping: inBounds, by: \.row)
-                ordered = byRow.keys.sorted().enumerated().flatMap { rank, row in
-                    let cols = byRow[row]!.sorted { $0.col < $1.col }
-                    return rank.isMultiple(of: 2) ? cols : cols.reversed()
+            // A discontiguous selection is numbered as it stands — the pattern walks
+            // the chosen wells and skips the rest, which is exactly how positions are
+            // picked on the instrument when some wells are not worth imaging.
+            shown = custom.filter { format.contains(row: $0.row, col: $0.col) }.map {
+                let d = geo.displayPosition(row: $0.row, col: $0.col)
+                return WellPos(row: d.row, col: d.col)
+            }
+        } else if let range = selection.flatMap({ $0.isSingleWell ? nil : $0 })?.clamped(to: format) {
+            // A model-space rectangle is a display-space rectangle at every turn.
+            let a = geo.displayPosition(row: range.minRow, col: range.minCol)
+            let b = geo.displayPosition(row: range.maxRow, col: range.maxCol)
+            for row in min(a.row, b.row)...max(a.row, b.row) {
+                for col in min(a.col, b.col)...max(a.col, b.col) {
+                    shown.append(WellPos(row: row, col: col))
                 }
             }
-            return ordered.map { format.index(row: $0.row, col: $0.col) }
+        } else {
+            for row in 0..<geo.displayRows {
+                for col in 0..<geo.displayCols { shown.append(WellPos(row: row, col: col)) }
+            }
         }
-        let chosen = selection.flatMap { $0.isSingleWell ? nil : $0 }
-        let range = (chosen ?? .wholePlate(format)).clamped(to: format)
-        var out: [Int] = []
-        out.reserveCapacity(range.wellCount)
+
+        let ordered: [WellPos]
         switch spec.pattern {
         case .acrossColumns:
-            for row in range.minRow...range.maxRow {
-                for col in range.minCol...range.maxCol { out.append(format.index(row: row, col: col)) }
-            }
+            ordered = shown.sorted { ($0.row, $0.col) < ($1.row, $1.col) }
         case .downRows:
-            for col in range.minCol...range.maxCol {
-                for row in range.minRow...range.maxRow { out.append(format.index(row: row, col: col)) }
-            }
+            ordered = shown.sorted { ($0.col, $0.row) < ($1.col, $1.row) }
         case .serpentine:
-            for (i, row) in (range.minRow...range.maxRow).enumerated() {
-                let cols = i.isMultiple(of: 2)
-                    ? Array(range.minCol...range.maxCol)
-                    : Array((range.minCol...range.maxCol).reversed())
-                for col in cols { out.append(format.index(row: row, col: col)) }
+            // Direction alternates by the row's rank among the rows actually being
+            // visited, so the snake never wastes a pass on an empty row.
+            let byRow = Dictionary(grouping: shown, by: \.row)
+            ordered = byRow.keys.sorted().enumerated().flatMap { rank, row in
+                let cols = byRow[row]!.sorted { $0.col < $1.col }
+                return rank.isMultiple(of: 2) ? cols : cols.reversed()
             }
         }
-        return out
+        return ordered.map {
+            let m = geo.modelPosition(displayRow: $0.row, displayCol: $0.col)
+            return format.index(row: m.row, col: m.col)
+        }
     }
 
     /// XY01, XY02, … — two digits like the instrument names its positions,

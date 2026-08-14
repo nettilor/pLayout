@@ -54,7 +54,9 @@ With a single factor it behaves exactly like a simple condition painter.
 
 In the sidebar, a **single click** on a factor or condition selects it — anywhere on
 the row, including the name — and a **double click** on the name renames it. Escape
-abandons a rename, Return or clicking away keeps it.
+abandons a rename, Return or clicking away keeps it. A **`⌘`-click** selects several
+rows at once for deleting together (right-click → Delete); painting stays off until
+a single row is selected again.
 
 ### How much each well shows
 
@@ -125,7 +127,7 @@ so deleting a template never affects a layout that used it.
 | click the corner | Turn the plate 90°, and back again (`⇧⌘L`) |
 | `⌘A` | Select every well |
 | `space` or `F` | Fill the current selection |
-| `⌫` | Clear the active factor in the selection (`⇧⌫` clears every factor) |
+| `⌫` | Clear the active factor in the selection (`⌘⌫` or `⇧⌫` clears every factor) |
 | `⎋` | Disarm — drag then selects without painting |
 | click off the plate | Deselect |
 | arrows | Move the cursor; `⇧`-arrows extend the selection |
@@ -324,7 +326,9 @@ counts, to guard against plate position effects.
 **XY Position Fill** (Plate menu, or `⇧⌘Y`) numbers wells the way a Keyence
 microscope names its imaging positions: an **XY** factor whose levels run
 `XY01`, `XY02`, … in the order the stage will visit them — across columns, down
-rows, or serpentine. It covers the selection, or the whole plate when nothing
+rows, or serpentine, walking the plate **as it is displayed**, so a turned plate
+numbers along the rows you actually see. It covers the selection, or the whole
+plate when nothing
 (or just the cursor) is selected — and a `⌘`-click selection is numbered exactly
 as it stands, so wells not worth imaging are simply skipped. The positions are
 coloured as one light-to-dark ramp, in a hue of your choosing, so the scan path

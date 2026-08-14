@@ -8,7 +8,6 @@ struct XYFillSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var spec: PlateEditor.XYFillSpec
-    @State private var gradientColor: Color
 
     /// Chips beyond this stay behind the "→ XY96" tail; a 1536-well preview
     /// would otherwise build 1536 views for a strip nobody scrolls to the end of.
@@ -16,13 +15,12 @@ struct XYFillSheet: View {
 
     init(editor: PlateEditor) {
         self.editor = editor
-        // The picker starts on the colour the fill would use anyway, so leaving it
+        // The swatch starts on the colour the fill would use anyway, so leaving it
         // alone is exactly the automatic behaviour.
         let existing = editor.layout.factors.first { $0.name == PlateEditor.xyFactorName }
         let hex = existing?.levels.first?.colorHex
             ?? PlateEditor.newLevelColor(in: editor.layout, fallback: editor.layout.factors.count)
         _spec = State(initialValue: .init(baseHex: hex))
-        _gradientColor = State(initialValue: Color(nsColor: NSColor(hex: hex) ?? .systemBlue))
     }
 
     private var wellCount: Int { editor.xyFillWells(spec).count }
@@ -49,10 +47,15 @@ struct XYFillSheet: View {
                 }
                 .pickerStyle(.segmented)
 
-                ColorPicker("Gradient colour", selection: $gradientColor, supportsOpacity: false)
-                    .onChange(of: gradientColor) { _, newValue in
-                        spec.baseHex = NSColor(newValue).usingColorSpace(.sRGB)?.hexString
+                // The same swatch-and-grid every condition colour goes through —
+                // a bare system picker here would break the app's own pattern.
+                HStack {
+                    Text("Gradient colour")
+                    Spacer()
+                    SwatchPicker(hex: spec.baseHex ?? Palette.color(at: 0)) {
+                        spec.baseHex = $0
                     }
+                }
             }
             .formStyle(.grouped)
             .frame(height: 130)

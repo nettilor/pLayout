@@ -56,6 +56,12 @@ struct Sidebar: View {
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {
+                    // The row keeps exactly one tap gesture (see RowClickTracker), so
+                    // ⌘ is read off the event rather than recognised as its own gesture.
+                    if NSApp.currentEvent?.modifierFlags.contains(.command) == true {
+                        editor.toggleFactorInMultiSelection(factor.id)
+                        return
+                    }
                     // Selection happens on every click, including the first of a
                     // double, so it is never waiting on anything.
                     let renaming = clicks.isDoubleClick(on: factor.id)
@@ -67,13 +73,25 @@ struct Sidebar: View {
                         editor.focusCanvas()
                     }
                 }
+                .listRowBackground(
+                    RoundedRectangle(cornerRadius: 5).fill(
+                        editor.multiSelectedFactorIDs.contains(factor.id)
+                            ? Color.accentColor.opacity(0.12) : Color.clear
+                    )
+                )
                 .contextMenu {
-                    Button(factor.kind == .numeric ? "Treat as Categorical" : "Treat as Numeric") {
-                        editor.setFactorKind(factor.id, kind: factor.kind == .numeric ? .categorical : .numeric)
+                    if editor.multiSelectedFactorIDs.contains(factor.id) {
+                        Button("Delete \(editor.multiSelectedFactorIDs.count) Factors", role: .destructive) {
+                            editor.deleteFactors(editor.multiSelectedFactorIDs)
+                        }
+                    } else {
+                        Button(factor.kind == .numeric ? "Treat as Categorical" : "Treat as Numeric") {
+                            editor.setFactorKind(factor.id, kind: factor.kind == .numeric ? .categorical : .numeric)
+                        }
+                        Divider()
+                        Button("Delete Factor", role: .destructive) { editor.deleteFactor(factor.id) }
+                            .disabled(editor.layout.factors.count <= 1)
                     }
-                    Divider()
-                    Button("Delete Factor", role: .destructive) { editor.deleteFactor(factor.id) }
-                        .disabled(editor.layout.factors.count <= 1)
                 }
                 .opacity(draggedFactorID == factor.id ? 0.4 : 1)
                 .overlay(alignment: .top) { dropLine(showing: dropTargetID == factor.id) }
@@ -210,8 +228,12 @@ struct Sidebar: View {
         .padding(.vertical, 1)
         .contentShape(Rectangle())
         .onTapGesture {
+            if NSApp.currentEvent?.modifierFlags.contains(.command) == true {
+                editor.toggleLevelInMultiSelection(level.id)
+                return
+            }
             let renaming = clicks.isDoubleClick(on: level.id)
-            editor.armedLevelID = level.id
+            editor.armLevel(level.id)
             if renaming {
                 editingLevelID = level.id
             } else {
@@ -220,17 +242,24 @@ struct Sidebar: View {
             }
         }
         .listRowBackground(
-            isArmed
-                ? RoundedRectangle(cornerRadius: 5).fill(Color.accentColor.opacity(0.12))
-                : RoundedRectangle(cornerRadius: 5).fill(Color.clear)
+            RoundedRectangle(cornerRadius: 5).fill(
+                isArmed || editor.multiSelectedLevelIDs.contains(level.id)
+                    ? Color.accentColor.opacity(0.12) : Color.clear
+            )
         )
         .contextMenu {
-            Button("Fill Selection with \(level.name)") {
-                editor.armedLevelID = level.id
-                editor.paintSelection()
+            if editor.multiSelectedLevelIDs.contains(level.id) {
+                Button("Delete \(editor.multiSelectedLevelIDs.count) Conditions", role: .destructive) {
+                    editor.deleteLevels(editor.multiSelectedLevelIDs)
+                }
+            } else {
+                Button("Fill Selection with \(level.name)") {
+                    editor.armLevel(level.id)
+                    editor.paintSelection()
+                }
+                Divider()
+                Button("Delete Condition", role: .destructive) { editor.deleteLevel(level.id) }
             }
-            Divider()
-            Button("Delete Condition", role: .destructive) { editor.deleteLevel(level.id) }
         }
     }
 

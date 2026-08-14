@@ -384,7 +384,7 @@ struct ShortcutsCard: View {
         Row(key: "click A / 1", detail: "Paint a whole row or column"),
         Row(key: "click ↻ corner", detail: "Turn the plate 90°, and back again (⇧⌘L)"),
         Row(key: "space  /  F", detail: "Fill the current selection"),
-        Row(key: "⌫", detail: "Clear active factor  (⇧⌫ clears all)"),
+        Row(key: "⌫", detail: "Clear active factor  (⌘⌫ clears all)"),
         Row(key: "⎋", detail: "Disarm — select without painting"),
         Row(key: "arrows", detail: "Move · ⇧arrows extend selection"),
         Row(key: "⌘1 … ⌘9", detail: "Switch factor"),

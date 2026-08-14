@@ -114,6 +114,35 @@ final class XYFillTests: XCTestCase {
         XCTAssertEqual(positionName(editor, row: 7, col: 0), "XY85")
     }
 
+    // MARK: - Orientation
+
+    /// The scan order follows the plate as displayed: on a turned plate the fill
+    /// walks the rows the user actually sees, exactly as they will at the instrument.
+    func testATurnedPlateNumbersAlongTheRowsTheUserSees() {
+        let editor = makeEditor()
+        editor.rotatePlate()
+        XCTAssertEqual(editor.quarterTurns, 1, "precondition: one clockwise turn")
+        editor.selection = nil
+        editor.applyXYFill(.init(pattern: .acrossColumns))
+
+        // Clockwise, H1 is drawn top-left and A1 top-right: the first displayed row
+        // is H1…A1, and the walk then drops to the next displayed row at H2.
+        XCTAssertEqual(positionName(editor, row: 7, col: 0), "XY01", "H1 leads on a turned plate")
+        XCTAssertEqual(positionName(editor, row: 0, col: 0), "XY08", "A1 ends the first displayed row")
+        XCTAssertEqual(positionName(editor, row: 7, col: 1), "XY09", "H2 starts the second")
+    }
+
+    func testSerpentineFollowsTheTurnToo() {
+        let editor = makeEditor()
+        editor.rotatePlate()
+        editor.selection = nil
+        editor.applyXYFill(.init(pattern: .serpentine))
+
+        XCTAssertEqual(positionName(editor, row: 7, col: 0), "XY01")
+        XCTAssertEqual(positionName(editor, row: 0, col: 1), "XY09", "the second displayed row runs back from A2")
+        XCTAssertEqual(positionName(editor, row: 7, col: 1), "XY16")
+    }
+
     // MARK: - Discontiguous selections
 
     func testACustomSelectionIsNumberedInPatternOrder() {
