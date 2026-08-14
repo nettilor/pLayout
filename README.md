@@ -112,6 +112,15 @@ shared across documents and can be renamed or deleted from the same sheet.
 Templates store only the name — a document records its plate as plain dimensions,
 so deleting a template never affects a layout that used it.
 
+## Layout templates
+
+**File → Save as Template…** keeps the whole layout — factors, conditions,
+plates and their painting — as a starting point, and **File → New from
+Template** opens an untitled copy: the recurring assay, set up once. Saving
+under an existing name updates that template, and Remove Template lives in
+the same submenu. Templates are files of their own, so removing one never
+touches a document that started from it.
+
 ## Painting
 
 | Input | Action |

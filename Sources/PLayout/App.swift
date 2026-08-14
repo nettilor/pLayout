@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 @main
@@ -38,11 +39,34 @@ struct PlateCommands: Commands {
     // beside the manual check rather than in ⌘, — the Settings window is a section
     // past its height budget already, and the two belong side by side anyway.
     @ObservedObject private var preferences = Preferences.shared
+    // Observed so the submenu rebuilds when a template is saved or removed —
+    // the same staleness the Factor menu taught (§ HANDOFF 2h).
+    @ObservedObject private var layoutTemplates = LayoutTemplateStore.shared
 
     var body: some Commands {
         CommandGroup(after: .appInfo) {
             Button("Check for Updates…") { UpdateChecker.shared.checkNow() }
             Toggle("Check for Updates Automatically", isOn: $preferences.checkForUpdatesAutomatically)
+        }
+
+        CommandGroup(after: .newItem) {
+            Menu("New from Template") {
+                if layoutTemplates.templates.isEmpty {
+                    Text("No templates yet — save one below.")
+                } else {
+                    ForEach(layoutTemplates.templates) { template in
+                        Button(template.name) { layoutTemplates.openNewDocument(from: template) }
+                    }
+                    Divider()
+                    Menu("Remove Template") {
+                        ForEach(layoutTemplates.templates) { template in
+                            Button(template.name) { layoutTemplates.delete(template) }
+                        }
+                    }
+                }
+            }
+            Button("Save as Template…") { saveCurrentLayoutAsTemplate() }
+                .disabled(editor == nil)
         }
 
         CommandGroup(replacing: .printItem) {
@@ -177,6 +201,31 @@ struct PlateCommands: Commands {
                     }
                 }
             }
+        }
+    }
+
+    /// One field, one question — a template is a starting point, not a document,
+    /// so it takes a name and nothing else.
+    private func saveCurrentLayoutAsTemplate() {
+        guard let editor else { return }
+        let alert = NSAlert()
+        alert.messageText = "Save as Template"
+        alert.informativeText = "The whole layout — factors, conditions, plates and their painting — becomes a starting point under File > New from Template. Saving under an existing name replaces that template."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        field.placeholderString = "Template name"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn,
+              !LayoutTemplateStore.sanitized(field.stringValue).isEmpty else { return }
+        do {
+            try LayoutTemplateStore.shared.save(editor.layout, named: field.stringValue)
+        } catch {
+            let failure = NSAlert()
+            failure.messageText = "Could not save the template"
+            failure.informativeText = error.localizedDescription
+            failure.runModal()
         }
     }
 }
