@@ -420,17 +420,25 @@ struct ShortcutsCard: View {
         Row(key: "1 – 9, 0", detail: "Arm condition 1–10"),
         Row(key: "[  /  ]", detail: "Previous / next condition"),
         Row(key: "drag", detail: "Paint a rectangle of wells"),
-        Row(key: "⌘ drag", detail: "Free-hand brush"),
+        Row(key: "⌘ drag", detail: "Free-hand brush · adds to the selection when disarmed"),
         Row(key: "⌥ drag", detail: "Erase wells"),
         Row(key: "click A / 1", detail: "Paint a whole row or column"),
-        Row(key: "click ↻ corner", detail: "Turn the plate 90°, and back again (⇧⌘L)"),
         Row(key: "space  /  F", detail: "Fill the current selection"),
         Row(key: "⌫", detail: "Clear active factor  (⌘⌫ clears all)"),
+        Row(key: "⌘ click", detail: "Add or remove one well from the selection"),
+        Row(key: "⇧ click", detail: "Extend the selection · ⇧arrows too"),
+        Row(key: "⌘A", detail: "Select every well"),
         Row(key: "⎋", detail: "Disarm — select without painting"),
-        Row(key: "arrows", detail: "Move · ⇧arrows extend selection"),
-        Row(key: "⌘1 … ⌘9", detail: "Switch factor"),
-        Row(key: "⇧⌘O", detail: "Overview — every factor at once, nothing armed"),
         Row(key: "click away", detail: "Deselect — click off the plate"),
+        Row(key: "⇧⌘D", detail: "Series Fill — dilutions and steps"),
+        Row(key: "⇧⌘Y", detail: "XY Position Fill — imaging positions"),
+        Row(key: "⇧⌘R", detail: "Randomise the selection"),
+        Row(key: "⌥⌘N", detail: "Note on the selected well"),
+        Row(key: "⌘1 … ⌘9", detail: "Switch factor"),
+        Row(key: "⌘ click row", detail: "Select several sidebar rows to delete together"),
+        Row(key: "rest on row", detail: "Spotlight a condition — the rest of the plate dims"),
+        Row(key: "click ↻ corner", detail: "Turn the plate 90°, and back again (⇧⌘L)"),
+        Row(key: "⇧⌘O", detail: "Overview — every factor at once, nothing armed"),
         Row(key: "pinch", detail: "Zoom in  ·  ⌘0 fits the plate again"),
         Row(key: "⌘C  /  ⌘V", detail: "Copy / paste as Excel cells"),
         Row(key: "⇧⌘C", detail: "Copy including row & column headers"),
@@ -457,6 +465,6 @@ struct ShortcutsCard: View {
             }
         }
         .padding(16)
-        .frame(width: 320)
+        .frame(width: 340)
     }
 }
