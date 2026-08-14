@@ -32,6 +32,19 @@ final class PlateEditor: ObservableObject {
     /// the plate itself answers "where is this?". Transient — never saved, never
     /// exported — which is why it lives here and not in the document.
     @Published var spotlightLevelID: UUID?
+    /// Non-nil presents the note sheet for a well or the plate.
+    @Published var noteTarget: NoteTarget?
+
+    enum NoteTarget: Identifiable, Equatable {
+        case well(Int)
+        case plate
+        var id: String {
+            switch self {
+            case .well(let well): return "well-\(well)"
+            case .plate: return "plate"
+            }
+        }
+    }
     @Published var hovered: WellPos?
     @Published var showSecondaryFactors = true
     /// Seeded from Preferences when the document opens; the sidebar toggle drives it
@@ -136,7 +149,61 @@ final class PlateEditor: ObservableObject {
                   let level = factor.level(id: id) else { return nil }
             return "\(factor.name): \(level.name)"
         }
-        return parts.isEmpty ? "\(label) — empty" : "\(label)  ·  " + parts.joined(separator: "  ·  ")
+        var text = parts.isEmpty ? "\(label) — empty" : "\(label)  ·  " + parts.joined(separator: "  ·  ")
+        if let note = plate.note(well: well) {
+            text += "  ·  ✎ \(note)"
+        }
+        return text
+    }
+
+    // MARK: - Notes
+
+    /// The note sheet for the well under the cursor — the selection focus, or the
+    /// last ⌘-clicked well when the selection is discontiguous.
+    func openWellNoteSheet() {
+        guard let plate else { return }
+        guard let focus = selection?.focus ?? customFocus,
+              plate.format.contains(row: focus.row, col: focus.col) else {
+            return flash("Select a well first.")
+        }
+        noteTarget = .well(plate.format.index(row: focus.row, col: focus.col))
+    }
+
+    func openPlateNoteSheet() {
+        noteTarget = .plate
+    }
+
+    func noteTitle(for target: NoteTarget) -> String {
+        switch target {
+        case .well(let well):
+            guard let format = plate?.format, format.cols > 0 else { return "Note" }
+            let label = WellNaming.wellLabel(
+                row: well / format.cols, col: well % format.cols, padded: layout.padWellLabels
+            )
+            return "Note for \(label)"
+        case .plate:
+            return "Note for \(plate?.name ?? "this plate")"
+        }
+    }
+
+    func noteText(for target: NoteTarget) -> String {
+        switch target {
+        case .well(let well): return plate?.note(well: well) ?? ""
+        case .plate: return plate?.note ?? ""
+        }
+    }
+
+    /// An emptied note is a removed one — the sheet says so instead of keeping a
+    /// blank around to mark wells for no reason.
+    func saveNote(_ text: String, for target: NoteTarget) {
+        switch target {
+        case .well(let well):
+            editPlate("Edit Well Note") { $0.setNote(text, well: well) }
+        case .plate:
+            editPlate("Edit Plate Note") {
+                $0.note = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
     }
 
     // MARK: - Mutation plumbing

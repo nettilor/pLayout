@@ -330,10 +330,14 @@ enum Exporter {
 
     static func tidyGrid(layout: Layout, includeUnassigned: Bool = true) -> [[String]] {
         let multiPlate = layout.plates.count > 1
+        // The Note column exists only when something is noted — an always-empty
+        // column is clutter in a table meant to go straight into analysis.
+        let anyNotes = layout.plates.contains { !$0.wellNotes.isEmpty }
         var header: [String] = []
         if multiPlate { header.append("Plate") }
         header.append(contentsOf: ["Well", "Row", "Column"])
         header.append(contentsOf: layout.factors.map { $0.displayName })
+        if anyNotes { header.append("Note") }
 
         var grid: [[String]] = [header]
         for plate in layout.plates {
@@ -351,6 +355,7 @@ enum Exporter {
                     row.append(WellNaming.rowLabel(r))
                     row.append("\(c + 1)")
                     row.append(contentsOf: values)
+                    if anyNotes { row.append(plate.note(well: well) ?? "") }
                     grid.append(row)
                 }
             }
@@ -397,6 +402,15 @@ enum Exporter {
                     .text(level.colorHex),
                     XLSX.Cell(value: .number(Double(count))),
                 ])
+            }
+        }
+        // Plate notes are about the plate, not any well, so the legend carries them.
+        let noted = layout.plates.filter { !$0.note.isEmpty }
+        if !noted.isEmpty {
+            rows.append([])
+            rows.append([XLSX.Cell(value: .text("Plate notes"), bold: true)])
+            for plate in noted {
+                rows.append([.text(plate.name), .text(plate.note)])
             }
         }
         return XLSX.Sheet(name: "Legend", rows: rows, columnWidths: [22, 22, 12, 8], freezeRows: 1)

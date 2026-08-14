@@ -43,6 +43,9 @@ struct ContentView: View {
         .sheet(isPresented: $editor.showingXYFillSheet) {
             XYFillSheet(editor: editor)
         }
+        .sheet(item: $editor.noteTarget) { target in
+            NoteSheet(editor: editor, target: target)
+        }
         .sheet(isPresented: $editor.showingCustomFormatSheet) {
             CustomFormatSheet(editor: editor)
         }
@@ -129,6 +132,10 @@ struct ContentView: View {
             Button("Duplicate Plate") {
                 editor.activePlateID = plate.id
                 editor.duplicatePlate()
+            }
+            Button("Plate Note…") {
+                editor.activePlateID = plate.id
+                editor.openPlateNoteSheet()
             }
             Divider()
             Button("Delete Plate", role: .destructive) { editor.deletePlate(plate.id) }

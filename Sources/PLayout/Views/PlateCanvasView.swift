@@ -489,6 +489,24 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
 
         guard !exportMode else { return }
 
+        // A noted well carries the spreadsheet's comment mark: a small corner
+        // triangle, screen only — figures stay clean, the notes travel in the
+        // Wells sheet instead.
+        if let plate = editor.plate, !plate.wellNotes.isEmpty {
+            NSColor.labelColor.withAlphaComponent(0.45).setFill()
+            for key in plate.wellNotes.keys {
+                guard let well = Int(key), well >= 0, well < format.wellCount else { continue }
+                let rect = geo.cellRect(row: well / format.cols, col: well % format.cols)
+                let side = max(4, min(rect.width * 0.16, 7))
+                let corner = NSBezierPath()
+                corner.move(to: NSPoint(x: rect.maxX - 1.5 - side, y: rect.minY + 1.5))
+                corner.line(to: NSPoint(x: rect.maxX - 1.5, y: rect.minY + 1.5))
+                corner.line(to: NSPoint(x: rect.maxX - 1.5, y: rect.minY + 1.5 + side))
+                corner.close()
+                corner.fill()
+            }
+        }
+
         // Spotlight: hovering a condition row in the sidebar dims every well that is
         // not that condition, so a dense plate answers "where is this?" by itself.
         // Transient view state, drawn past the export guard on purpose.

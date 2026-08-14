@@ -193,11 +193,49 @@ struct Plate: Identifiable, Codable, Hashable {
     var format: PlateFormat
     /// factor id (string) -> per-well level id (string), indexed row-major. nil = unassigned.
     var assignments: [String: [String?]] = [:]
+    /// well index (string) -> note. String keys because Swift encodes an Int-keyed
+    /// dictionary as a flat array, which nothing else can read back.
+    var wellNotes: [String: String] = [:]
+    /// A note about the whole plate.
+    var note: String = ""
 
     init(id: UUID = UUID(), name: String, format: PlateFormat = .well96) {
         self.id = id
         self.name = name
         self.format = format
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, format, assignments, wellNotes, note
+    }
+
+    /// Hand-written for the same reason `Layout` and `LayoutSnapshot` are: the
+    /// synthesized decoder ignores stored-property defaults, so the notes fields
+    /// would make every earlier `.plate` fail to open. The third type in this file
+    /// to need it, exactly as predicted when the second did.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        format = try container.decode(PlateFormat.self, forKey: .format)
+        assignments = try container.decodeIfPresent([String: [String?]].self, forKey: .assignments) ?? [:]
+        wellNotes = try container.decodeIfPresent([String: String].self, forKey: .wellNotes) ?? [:]
+        note = try container.decodeIfPresent(String.self, forKey: .note) ?? ""
+    }
+
+    func note(well: Int) -> String? {
+        guard let text = wellNotes[String(well)], !text.isEmpty else { return nil }
+        return text
+    }
+
+    mutating func setNote(_ text: String?, well: Int) {
+        guard well >= 0, well < format.wellCount else { return }
+        let clean = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if clean.isEmpty {
+            wellNotes.removeValue(forKey: String(well))
+        } else {
+            wellNotes[String(well)] = clean
+        }
     }
 
     func levelID(factor: UUID, well: Int) -> UUID? {
@@ -243,8 +281,19 @@ struct Plate: Identifiable, Codable, Hashable {
             }
             if fresh.contains(where: { $0 != nil }) { remapped[factorKey] = fresh }
         }
+        // Notes stay with their row and column too; one on a well the smaller
+        // plate no longer has goes the way of that well's values.
+        var keptNotes: [String: String] = [:]
+        for row in 0..<min(format.rows, newFormat.rows) {
+            for col in 0..<min(format.cols, newFormat.cols) {
+                if let text = wellNotes[String(format.index(row: row, col: col))] {
+                    keptNotes[String(newFormat.index(row: row, col: col))] = text
+                }
+            }
+        }
         format = newFormat
         assignments = remapped
+        wellNotes = keptNotes
     }
 
     /// True when shrinking to `newFormat` would drop wells that currently hold a value.

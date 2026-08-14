@@ -107,6 +107,8 @@ struct PlateCommands: Commands {
             Button("Clear All Factors in Selection") { editor?.clearSelectionAllFactors() }
                 .keyboardShortcut(.delete, modifiers: .command)
             Button("Select All Wells") { editor?.selectAllWells() }
+            Button("Well Note…") { editor?.openWellNoteSheet() }
+                .keyboardShortcut("n", modifiers: [.command, .option])
 
             Divider()
 

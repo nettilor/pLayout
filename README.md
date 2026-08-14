@@ -317,6 +317,15 @@ deleting each land in the undo stack, so a mis-clicked button costs one `⌘Z` a
 never any work. States are stored in the `.plate` file, so they are still there next
 time you open it; the twenty most recent are kept.
 
+## Notes
+
+`⌥⌘N` attaches a note to the selected well — a bubble, a smear, a well to
+treat with suspicion — and right-clicking a plate tab adds one for the whole
+plate. Noted wells carry a small corner mark on screen (never in a figure),
+the note shows in the status bar under the cursor, and a **Note** column
+joins the Wells sheet and tidy CSV whenever any exist; plate notes land in
+the Legend. Empty a note to remove it.
+
 ## Dose series
 
 **Series Fill** (toolbar, or `⇧⌘D`) writes a value series across the selection —
