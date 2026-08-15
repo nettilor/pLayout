@@ -35,6 +35,12 @@ down, and press **Open Anyway**. It is asked for once, and never again.
 `Tools/make_dmg.sh` is what packages a release — a universal build in a disk
 image whose window carries those instructions.
 
+**Windows:** the same releases page carries `pLayout-x.y.z-windows.zip`, a build
+of the Python/PySide6 port in `python_port/` (same `.plate` files, same exports —
+see [`python_port/README.md`](python_port/README.md)). Unzip it anywhere and run
+`pLayout.exe`; the first launch shows SmartScreen because the build is not signed —
+click **More info → Run anyway**, once. Nothing needs installing.
+
 Once installed, pLayout notices new releases by itself: at most once a day it
 asks this repository's releases feed whether a newer version exists, silently
 unless there is one — and never says a word offline. When one exists it offers
