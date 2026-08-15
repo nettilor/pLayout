@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "playout"
+version = "1.4.0"
+description = "pLayout — microplate layout editor (Python/PySide6 port of the macOS app)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "PolyForm-Noncommercial-1.0.0" }
+dependencies = [
+    "PySide6-Essentials>=6.7,<7",
+    "openpyxl>=3.1,<4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-qt>=4.4",
+]
+build = [
+    "pyinstaller>=6.6",
+]
+
+[project.scripts]
+playout = "playout.app:main"
+
+[project.gui-scripts]
+playout-gui = "playout.app:main"
+
+[tool.setuptools.packages.find]
+include = ["playout*"]
+
+[tool.setuptools.package-data]
+playout = ["resources/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+qt_api = "pyside6"

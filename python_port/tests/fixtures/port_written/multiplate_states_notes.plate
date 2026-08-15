@@ -1,0 +1,1216 @@
+{
+  "factors" : [
+    {
+      "id" : "01E16226-3231-4DF5-B35A-92CAA2039D4C",
+      "kind" : "categorical",
+      "levels" : [
+        {
+          "colorHex" : "#5889BC",
+          "id" : "C9604EF0-E263-4487-8FD8-D080C73EFE26",
+          "name" : "Untreated"
+        },
+        {
+          "colorHex" : "#F28E2B",
+          "id" : "B3130822-F13C-4F2C-A638-CC5BB4527A98",
+          "name" : "Vehicle"
+        },
+        {
+          "colorHex" : "#59A14F",
+          "id" : "77F7013B-D239-4768-87B0-A5E80127CD1A",
+          "name" : "Treated"
+        }
+      ],
+      "name" : "Condition",
+      "unit" : ""
+    },
+    {
+      "id" : "56806714-B354-46CF-85F3-B13A29FC50CB",
+      "kind" : "numeric",
+      "levels" : [
+        {
+          "colorHex" : "#CDE3FA",
+          "id" : "61908FE5-0568-4084-A6AC-4C69EC2B279C",
+          "name" : "100"
+        },
+        {
+          "colorHex" : "#B1CFEE",
+          "id" : "BED3C575-E8C6-4826-9CFB-22FE5BE1C0EA",
+          "name" : "10"
+        },
+        {
+          "colorHex" : "#97BBE1",
+          "id" : "82F6C305-B431-4CB7-9F95-F1F992044193",
+          "name" : "1"
+        },
+        {
+          "colorHex" : "#7FA9D5",
+          "id" : "7A8D404A-CD08-4BEB-AE31-CEB05EB947B8",
+          "name" : "0.1"
+        },
+        {
+          "colorHex" : "#6998C8",
+          "id" : "794B1DA1-46F0-4D5E-A4D5-4640C8D04CE4",
+          "name" : "0.01"
+        },
+        {
+          "colorHex" : "#5587BC",
+          "id" : "A9829879-417C-416A-B469-3D0CEB0465D8",
+          "name" : "0"
+        },
+        {
+          "colorHex" : "#5889BC",
+          "id" : "854A2DD2-F644-4A7D-80EC-AB0D10539824",
+          "name" : "Level 1"
+        }
+      ],
+      "name" : "Dose",
+      "unit" : "µM"
+    },
+    {
+      "id" : "1973804C-4EF2-4205-A125-5AEF0023EE2D",
+      "kind" : "categorical",
+      "levels" : [
+        {
+          "colorHex" : "#D2FACD",
+          "id" : "F2188113-C42D-45DD-9DF9-8E2D780BB514",
+          "name" : "XY01"
+        },
+        {
+          "colorHex" : "#D1F9CB",
+          "id" : "42DD3623-CECB-464D-94CA-9F789C7E318A",
+          "name" : "XY02"
+        },
+        {
+          "colorHex" : "#CFF8C9",
+          "id" : "28145913-D228-4EB8-A9B8-F75A990082DA",
+          "name" : "XY03"
+        },
+        {
+          "colorHex" : "#CEF7C8",
+          "id" : "1F3BF2F1-4A96-4B87-B03D-B9B7B21799D2",
+          "name" : "XY04"
+        },
+        {
+          "colorHex" : "#CCF6C6",
+          "id" : "EC908CEC-71E0-456D-91BC-EBBB5E364799",
+          "name" : "XY05"
+        },
+        {
+          "colorHex" : "#CAF5C4",
+          "id" : "23273207-CC47-4CAD-8DD5-F1C9D0145538",
+          "name" : "XY06"
+        },
+        {
+          "colorHex" : "#C9F4C3",
+          "id" : "6326BE16-6A0A-4C74-A9DA-953204BA873B",
+          "name" : "XY07"
+        },
+        {
+          "colorHex" : "#C7F3C1",
+          "id" : "4CCFD9F3-46B1-46DC-B084-40DA4F2DA7E2",
+          "name" : "XY08"
+        },
+        {
+          "colorHex" : "#C5F2BF",
+          "id" : "A528187B-4428-491E-AEAE-E365AEA8A7A1",
+          "name" : "XY09"
+        },
+        {
+          "colorHex" : "#C4F1BE",
+          "id" : "33F615E4-66FB-4E27-AAB0-6039E32439C6",
+          "name" : "XY10"
+        },
+        {
+          "colorHex" : "#C2F1BC",
+          "id" : "DDE02DBD-02C6-4CA2-8794-A92AE0485B8A",
+          "name" : "XY11"
+        },
+        {
+          "colorHex" : "#C1F0BA",
+          "id" : "02C40F3D-A547-45DC-AF18-9F8682B095BA",
+          "name" : "XY12"
+        },
+        {
+          "colorHex" : "#BFEFB9",
+          "id" : "F71F4439-0FF6-4448-AA2E-0F58371348C9",
+          "name" : "XY13"
+        },
+        {
+          "colorHex" : "#BEEEB7",
+          "id" : "5226DEB4-343D-4607-9F35-7971D87CAE48",
+          "name" : "XY14"
+        },
+        {
+          "colorHex" : "#BCEDB5",
+          "id" : "A6A7D0E8-58ED-4678-B0F1-4851BA796669",
+          "name" : "XY15"
+        },
+        {
+          "colorHex" : "#BAECB4",
+          "id" : "EB852437-6753-4C60-913F-784D6692C692",
+          "name" : "XY16"
+        },
+        {
+          "colorHex" : "#B9EBB2",
+          "id" : "CF80DBE6-B4AC-4FB6-A163-654E6F598ADD",
+          "name" : "XY17"
+        },
+        {
+          "colorHex" : "#B7EAB0",
+          "id" : "E56C446D-219E-4924-A19C-C4EB0F033C5D",
+          "name" : "XY18"
+        },
+        {
+          "colorHex" : "#B6E9AF",
+          "id" : "C80A2FCB-C423-4FAE-B977-650DA6F5EF35",
+          "name" : "XY19"
+        },
+        {
+          "colorHex" : "#B4E8AD",
+          "id" : "86F7E37A-F418-42F2-B0CA-9AEC6F0F309A",
+          "name" : "XY20"
+        },
+        {
+          "colorHex" : "#B3E7AC",
+          "id" : "BE7AC21E-FF50-4BFD-BABA-DDBDB968B860",
+          "name" : "XY21"
+        },
+        {
+          "colorHex" : "#B1E6AA",
+          "id" : "38FE599E-D5FA-4E8B-B115-A44DEF501F4E",
+          "name" : "XY22"
+        },
+        {
+          "colorHex" : "#B0E5A8",
+          "id" : "EFA9CE5F-9A2E-4A75-AD36-5C563DC8355D",
+          "name" : "XY23"
+        },
+        {
+          "colorHex" : "#AEE4A7",
+          "id" : "757271E6-0DF3-4455-A898-2E916793D6C0",
+          "name" : "XY24"
+        },
+        {
+          "colorHex" : "#ADE3A5",
+          "id" : "6AC2577B-2676-450A-A24B-17307612DC2B",
+          "name" : "XY25"
+        },
+        {
+          "colorHex" : "#ABE3A4",
+          "id" : "07CF1A66-1A1D-4354-8CDB-818CC5CBFED0",
+          "name" : "XY26"
+        },
+        {
+          "colorHex" : "#AAE2A2",
+          "id" : "630DE1B4-37CF-4AE9-8A0F-F40E98E9B610",
+          "name" : "XY27"
+        },
+        {
+          "colorHex" : "#A8E1A1",
+          "id" : "9538B498-D50A-4CFE-91CC-DA5086FC51B8",
+          "name" : "XY28"
+        },
+        {
+          "colorHex" : "#A7E09F",
+          "id" : "E3136454-A04A-4870-846E-63F2251B457B",
+          "name" : "XY29"
+        },
+        {
+          "colorHex" : "#A5DF9E",
+          "id" : "4F9E6ABE-A50A-41B7-9FDD-0EDE5BECC04D",
+          "name" : "XY30"
+        },
+        {
+          "colorHex" : "#A4DE9C",
+          "id" : "789A78BD-AE55-4925-BBC9-CDDCAA033FB2",
+          "name" : "XY31"
+        },
+        {
+          "colorHex" : "#A3DD9A",
+          "id" : "D1EC4242-80C7-48EA-802D-08DBF6B17042",
+          "name" : "XY32"
+        },
+        {
+          "colorHex" : "#A1DC99",
+          "id" : "2E047B18-75A4-4DA9-ABD2-3AFE9ABDA650",
+          "name" : "XY33"
+        },
+        {
+          "colorHex" : "#A0DB97",
+          "id" : "E1F3E842-8BCC-4A15-A4B8-90DFBF0BE78F",
+          "name" : "XY34"
+        },
+        {
+          "colorHex" : "#9EDA96",
+          "id" : "CC608D32-AD87-421B-B50F-797A78358FB8",
+          "name" : "XY35"
+        },
+        {
+          "colorHex" : "#9DD994",
+          "id" : "66B8B4FB-0E91-46EB-AA68-02DDAFCD803C",
+          "name" : "XY36"
+        },
+        {
+          "colorHex" : "#9BD893",
+          "id" : "1D02F30F-A0C5-4B2E-9C52-C89103CEC3D4",
+          "name" : "XY37"
+        },
+        {
+          "colorHex" : "#9AD792",
+          "id" : "50964454-9C28-4D66-AFDD-FC239FC1DCAB",
+          "name" : "XY38"
+        },
+        {
+          "colorHex" : "#99D690",
+          "id" : "1CCDE9C0-7458-4FD1-857B-88652890CEDB",
+          "name" : "XY39"
+        },
+        {
+          "colorHex" : "#97D58F",
+          "id" : "23DEBE88-39B6-400C-A3A2-2E5815095594",
+          "name" : "XY40"
+        },
+        {
+          "colorHex" : "#96D48D",
+          "id" : "749AD95C-1AEE-45CE-8435-A0BE5196AEC2",
+          "name" : "XY41"
+        },
+        {
+          "colorHex" : "#94D48C",
+          "id" : "36C61C77-A30F-47DA-AEED-610EFE83963B",
+          "name" : "XY42"
+        },
+        {
+          "colorHex" : "#93D38A",
+          "id" : "56F84869-42FC-43AE-BA09-A6A8A6AE98A4",
+          "name" : "XY43"
+        },
+        {
+          "colorHex" : "#92D289",
+          "id" : "942A0B4F-8395-41E2-B252-D31719ABD48B",
+          "name" : "XY44"
+        },
+        {
+          "colorHex" : "#90D187",
+          "id" : "2D4C720B-0CBD-42CD-B6F8-0F8F314B08FD",
+          "name" : "XY45"
+        },
+        {
+          "colorHex" : "#8FD086",
+          "id" : "F3974FEF-A292-4E68-B335-16AA07948C08",
+          "name" : "XY46"
+        },
+        {
+          "colorHex" : "#8ECF85",
+          "id" : "FB1AEF84-8224-43D0-9F00-6D937E93442D",
+          "name" : "XY47"
+        },
+        {
+          "colorHex" : "#8CCE83",
+          "id" : "DDB2EF49-EE94-40F9-A07A-1518FB0BA1AB",
+          "name" : "XY48"
+        },
+        {
+          "colorHex" : "#8BCD82",
+          "id" : "D48F1A7C-8AD6-48CF-BD68-C560E4AD7E7F",
+          "name" : "XY49"
+        },
+        {
+          "colorHex" : "#8ACC80",
+          "id" : "855B3CAC-F7CB-4532-B527-A3B82E0B4FAD",
+          "name" : "XY50"
+        },
+        {
+          "colorHex" : "#88CB7F",
+          "id" : "B00E61A2-2D3E-4809-B6A1-3FA80C97DEF6",
+          "name" : "XY51"
+        },
+        {
+          "colorHex" : "#87CA7E",
+          "id" : "AB54F4A2-BEA1-41EF-BF6A-0D5E7FD829F8",
+          "name" : "XY52"
+        },
+        {
+          "colorHex" : "#86C97C",
+          "id" : "8D7B8203-893B-40B3-B0B6-C512864EA937",
+          "name" : "XY53"
+        },
+        {
+          "colorHex" : "#84C87B",
+          "id" : "643929A1-0E7E-4821-BABF-D221326F4351",
+          "name" : "XY54"
+        },
+        {
+          "colorHex" : "#83C77A",
+          "id" : "D8011A30-3DDB-4681-B6A8-CB103F5FA070",
+          "name" : "XY55"
+        },
+        {
+          "colorHex" : "#82C678",
+          "id" : "8E5C7FD6-86A4-4B5E-AE21-E5110A75B312",
+          "name" : "XY56"
+        },
+        {
+          "colorHex" : "#80C577",
+          "id" : "E6AC79C5-F691-4AB5-A885-AA1F365DEF01",
+          "name" : "XY57"
+        },
+        {
+          "colorHex" : "#7FC576",
+          "id" : "9D488CE0-573D-4978-A012-68DD5F579565",
+          "name" : "XY58"
+        },
+        {
+          "colorHex" : "#7EC474",
+          "id" : "0A35B1C9-0439-46E7-88F8-8E95CF17B98E",
+          "name" : "XY59"
+        },
+        {
+          "colorHex" : "#7DC373",
+          "id" : "B1B7478F-CF66-4674-A48D-E7B822FDAEF5",
+          "name" : "XY60"
+        },
+        {
+          "colorHex" : "#7BC272",
+          "id" : "FC993659-1A5D-4A40-88DB-2521F51F5233",
+          "name" : "XY61"
+        },
+        {
+          "colorHex" : "#7AC170",
+          "id" : "5E405464-4630-450F-9E7E-248FE605F331",
+          "name" : "XY62"
+        },
+        {
+          "colorHex" : "#79C06F",
+          "id" : "00A0F534-22C3-4856-80A1-0AB477EDA774",
+          "name" : "XY63"
+        },
+        {
+          "colorHex" : "#78BF6E",
+          "id" : "2CD56BDF-AC36-46B1-BD90-961254257488",
+          "name" : "XY64"
+        },
+        {
+          "colorHex" : "#76BE6C",
+          "id" : "4776386D-F48E-458C-AA84-F32FC94E9C78",
+          "name" : "XY65"
+        },
+        {
+          "colorHex" : "#75BD6B",
+          "id" : "86C0E838-D39A-49AF-96AA-41D1353CBBB1",
+          "name" : "XY66"
+        },
+        {
+          "colorHex" : "#74BC6A",
+          "id" : "4FAD1B3D-30CD-4D3D-A5E9-5C7F999DB0C3",
+          "name" : "XY67"
+        },
+        {
+          "colorHex" : "#73BB69",
+          "id" : "D307347C-C12B-484A-8553-DAB36D4F98DE",
+          "name" : "XY68"
+        },
+        {
+          "colorHex" : "#72BA67",
+          "id" : "B7495C8C-6FE4-4D5D-8FD9-E8C8A1F62C08",
+          "name" : "XY69"
+        },
+        {
+          "colorHex" : "#70B966",
+          "id" : "DC4E1694-405E-48CC-B362-75D3787D8E34",
+          "name" : "XY70"
+        },
+        {
+          "colorHex" : "#6FB865",
+          "id" : "9AD2C2FD-7CF6-4C14-A7D3-E6A8188AF913",
+          "name" : "XY71"
+        },
+        {
+          "colorHex" : "#6EB764",
+          "id" : "D375A644-36DE-4C78-8F5C-A39D0D5F7D3A",
+          "name" : "XY72"
+        },
+        {
+          "colorHex" : "#6DB762",
+          "id" : "B3A9ABDC-4BA5-4C76-A222-43C99A924455",
+          "name" : "XY73"
+        },
+        {
+          "colorHex" : "#6CB661",
+          "id" : "CDC142B9-1039-483B-A41C-44BC0C6C6098",
+          "name" : "XY74"
+        },
+        {
+          "colorHex" : "#6AB560",
+          "id" : "D6DEFC10-7354-4C33-B2F8-97F563D46AD8",
+          "name" : "XY75"
+        },
+        {
+          "colorHex" : "#69B45F",
+          "id" : "12211F35-97EB-4524-8784-04CF29DF098B",
+          "name" : "XY76"
+        },
+        {
+          "colorHex" : "#68B35E",
+          "id" : "2520032F-B512-4297-B88E-256EA23F5331",
+          "name" : "XY77"
+        },
+        {
+          "colorHex" : "#67B25C",
+          "id" : "2A699D1B-CD6A-49F1-9ED6-602213F3689E",
+          "name" : "XY78"
+        },
+        {
+          "colorHex" : "#66B15B",
+          "id" : "DCF163E9-4A80-4D76-8AED-FE0D4DC327CA",
+          "name" : "XY79"
+        },
+        {
+          "colorHex" : "#65B05A",
+          "id" : "51832933-E305-4A25-AB6F-B75DC8DFE942",
+          "name" : "XY80"
+        },
+        {
+          "colorHex" : "#63AF59",
+          "id" : "1E00C957-2140-4D3E-8602-96669C8DF2DD",
+          "name" : "XY81"
+        },
+        {
+          "colorHex" : "#62AE58",
+          "id" : "CDEE0721-4AC4-48C7-B66D-F609372B5E07",
+          "name" : "XY82"
+        },
+        {
+          "colorHex" : "#61AD57",
+          "id" : "B39B712E-6E5A-4986-BCA4-41043B794C0F",
+          "name" : "XY83"
+        },
+        {
+          "colorHex" : "#60AC56",
+          "id" : "B7408396-BF6A-42C2-84E8-C4477DBA315A",
+          "name" : "XY84"
+        },
+        {
+          "colorHex" : "#5FAB54",
+          "id" : "9D631686-EFD3-47B1-A343-CAEBF33E7077",
+          "name" : "XY85"
+        },
+        {
+          "colorHex" : "#5EAA53",
+          "id" : "323E7C29-035B-4A0E-8C3F-67C03A04D8FD",
+          "name" : "XY86"
+        },
+        {
+          "colorHex" : "#5DA952",
+          "id" : "31AF1B96-F833-4E05-94AF-4090FF6698A8",
+          "name" : "XY87"
+        },
+        {
+          "colorHex" : "#5CA851",
+          "id" : "0987CE0B-42FE-471D-A1FF-1D382B4A4C6D",
+          "name" : "XY88"
+        },
+        {
+          "colorHex" : "#5BA850",
+          "id" : "AA5783F2-64D4-4B10-B6C5-11107F4B5BC5",
+          "name" : "XY89"
+        },
+        {
+          "colorHex" : "#5AA74F",
+          "id" : "8E625C1F-92A3-4B03-A21C-1E247F75D0D9",
+          "name" : "XY90"
+        },
+        {
+          "colorHex" : "#59A64E",
+          "id" : "BC411C90-5AE5-4E33-9EFB-BBFCC719A03C",
+          "name" : "XY91"
+        },
+        {
+          "colorHex" : "#57A54D",
+          "id" : "E5655748-0A28-4FE3-830D-79FFBF02F09C",
+          "name" : "XY92"
+        },
+        {
+          "colorHex" : "#56A44C",
+          "id" : "B9AAF533-B2FD-463C-9371-6256FA4390C5",
+          "name" : "XY93"
+        },
+        {
+          "colorHex" : "#55A34B",
+          "id" : "80D1EB54-BACC-4F25-A89B-FD6FC2E10F50",
+          "name" : "XY94"
+        },
+        {
+          "colorHex" : "#54A24A",
+          "id" : "152C51BC-DCAD-47B8-810A-6CB6274F6C74",
+          "name" : "XY95"
+        },
+        {
+          "colorHex" : "#53A148",
+          "id" : "4F13CE6D-5ED5-4AD2-BFAD-38C3C1761003",
+          "name" : "XY96"
+        }
+      ],
+      "name" : "XY",
+      "unit" : ""
+    }
+  ],
+  "formatVersion" : 1,
+  "notes" : "",
+  "orientation" : "automatic",
+  "padWellLabels" : true,
+  "plates" : [
+    {
+      "assignments" : {
+        "01E16226-3231-4DF5-B35A-92CAA2039D4C" : [
+          "C9604EF0-E263-4487-8FD8-D080C73EFE26",
+          "C9604EF0-E263-4487-8FD8-D080C73EFE26",
+          "C9604EF0-E263-4487-8FD8-D080C73EFE26",
+          "C9604EF0-E263-4487-8FD8-D080C73EFE26",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          "C9604EF0-E263-4487-8FD8-D080C73EFE26",
+          "C9604EF0-E263-4487-8FD8-D080C73EFE26",
+          "C9604EF0-E263-4487-8FD8-D080C73EFE26",
+          "C9604EF0-E263-4487-8FD8-D080C73EFE26",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      "format" : {
+        "cols" : 12,
+        "rows" : 8
+      },
+      "id" : "FF8C30D9-999E-4E40-95D8-A73AE665A02C",
+      "name" : "Plate 1",
+      "note" : "",
+      "wellNotes" : {}
+    },
+    {
+      "assignments" : {
+        "1973804C-4EF2-4205-A125-5AEF0023EE2D" : [
+          "F2188113-C42D-45DD-9DF9-8E2D780BB514",
+          "42DD3623-CECB-464D-94CA-9F789C7E318A",
+          "28145913-D228-4EB8-A9B8-F75A990082DA",
+          "1F3BF2F1-4A96-4B87-B03D-B9B7B21799D2",
+          "EC908CEC-71E0-456D-91BC-EBBB5E364799",
+          "23273207-CC47-4CAD-8DD5-F1C9D0145538",
+          "6326BE16-6A0A-4C74-A9DA-953204BA873B",
+          "4CCFD9F3-46B1-46DC-B084-40DA4F2DA7E2",
+          "A528187B-4428-491E-AEAE-E365AEA8A7A1",
+          "33F615E4-66FB-4E27-AAB0-6039E32439C6",
+          "DDE02DBD-02C6-4CA2-8794-A92AE0485B8A",
+          "02C40F3D-A547-45DC-AF18-9F8682B095BA",
+          "F71F4439-0FF6-4448-AA2E-0F58371348C9",
+          "5226DEB4-343D-4607-9F35-7971D87CAE48",
+          "A6A7D0E8-58ED-4678-B0F1-4851BA796669",
+          "EB852437-6753-4C60-913F-784D6692C692",
+          "CF80DBE6-B4AC-4FB6-A163-654E6F598ADD",
+          "E56C446D-219E-4924-A19C-C4EB0F033C5D",
+          "C80A2FCB-C423-4FAE-B977-650DA6F5EF35",
+          "86F7E37A-F418-42F2-B0CA-9AEC6F0F309A",
+          "BE7AC21E-FF50-4BFD-BABA-DDBDB968B860",
+          "38FE599E-D5FA-4E8B-B115-A44DEF501F4E",
+          "EFA9CE5F-9A2E-4A75-AD36-5C563DC8355D",
+          "757271E6-0DF3-4455-A898-2E916793D6C0",
+          "6AC2577B-2676-450A-A24B-17307612DC2B",
+          "07CF1A66-1A1D-4354-8CDB-818CC5CBFED0",
+          "630DE1B4-37CF-4AE9-8A0F-F40E98E9B610",
+          "9538B498-D50A-4CFE-91CC-DA5086FC51B8",
+          "E3136454-A04A-4870-846E-63F2251B457B",
+          "4F9E6ABE-A50A-41B7-9FDD-0EDE5BECC04D",
+          "789A78BD-AE55-4925-BBC9-CDDCAA033FB2",
+          "D1EC4242-80C7-48EA-802D-08DBF6B17042",
+          "2E047B18-75A4-4DA9-ABD2-3AFE9ABDA650",
+          "E1F3E842-8BCC-4A15-A4B8-90DFBF0BE78F",
+          "CC608D32-AD87-421B-B50F-797A78358FB8",
+          "66B8B4FB-0E91-46EB-AA68-02DDAFCD803C",
+          "1D02F30F-A0C5-4B2E-9C52-C89103CEC3D4",
+          "50964454-9C28-4D66-AFDD-FC239FC1DCAB",
+          "1CCDE9C0-7458-4FD1-857B-88652890CEDB",
+          "23DEBE88-39B6-400C-A3A2-2E5815095594",
+          "749AD95C-1AEE-45CE-8435-A0BE5196AEC2",
+          "36C61C77-A30F-47DA-AEED-610EFE83963B",
+          "56F84869-42FC-43AE-BA09-A6A8A6AE98A4",
+          "942A0B4F-8395-41E2-B252-D31719ABD48B",
+          "2D4C720B-0CBD-42CD-B6F8-0F8F314B08FD",
+          "F3974FEF-A292-4E68-B335-16AA07948C08",
+          "FB1AEF84-8224-43D0-9F00-6D937E93442D",
+          "DDB2EF49-EE94-40F9-A07A-1518FB0BA1AB",
+          "D48F1A7C-8AD6-48CF-BD68-C560E4AD7E7F",
+          "855B3CAC-F7CB-4532-B527-A3B82E0B4FAD",
+          "B00E61A2-2D3E-4809-B6A1-3FA80C97DEF6",
+          "AB54F4A2-BEA1-41EF-BF6A-0D5E7FD829F8",
+          "8D7B8203-893B-40B3-B0B6-C512864EA937",
+          "643929A1-0E7E-4821-BABF-D221326F4351",
+          "D8011A30-3DDB-4681-B6A8-CB103F5FA070",
+          "8E5C7FD6-86A4-4B5E-AE21-E5110A75B312",
+          "E6AC79C5-F691-4AB5-A885-AA1F365DEF01",
+          "9D488CE0-573D-4978-A012-68DD5F579565",
+          "0A35B1C9-0439-46E7-88F8-8E95CF17B98E",
+          "B1B7478F-CF66-4674-A48D-E7B822FDAEF5",
+          "FC993659-1A5D-4A40-88DB-2521F51F5233",
+          "5E405464-4630-450F-9E7E-248FE605F331",
+          "00A0F534-22C3-4856-80A1-0AB477EDA774",
+          "2CD56BDF-AC36-46B1-BD90-961254257488",
+          "4776386D-F48E-458C-AA84-F32FC94E9C78",
+          "86C0E838-D39A-49AF-96AA-41D1353CBBB1",
+          "4FAD1B3D-30CD-4D3D-A5E9-5C7F999DB0C3",
+          "D307347C-C12B-484A-8553-DAB36D4F98DE",
+          "B7495C8C-6FE4-4D5D-8FD9-E8C8A1F62C08",
+          "DC4E1694-405E-48CC-B362-75D3787D8E34",
+          "9AD2C2FD-7CF6-4C14-A7D3-E6A8188AF913",
+          "D375A644-36DE-4C78-8F5C-A39D0D5F7D3A",
+          "B3A9ABDC-4BA5-4C76-A222-43C99A924455",
+          "CDC142B9-1039-483B-A41C-44BC0C6C6098",
+          "D6DEFC10-7354-4C33-B2F8-97F563D46AD8",
+          "12211F35-97EB-4524-8784-04CF29DF098B",
+          "2520032F-B512-4297-B88E-256EA23F5331",
+          "2A699D1B-CD6A-49F1-9ED6-602213F3689E",
+          "DCF163E9-4A80-4D76-8AED-FE0D4DC327CA",
+          "51832933-E305-4A25-AB6F-B75DC8DFE942",
+          "1E00C957-2140-4D3E-8602-96669C8DF2DD",
+          "CDEE0721-4AC4-48C7-B66D-F609372B5E07",
+          "B39B712E-6E5A-4986-BCA4-41043B794C0F",
+          "B7408396-BF6A-42C2-84E8-C4477DBA315A",
+          "9D631686-EFD3-47B1-A343-CAEBF33E7077",
+          "323E7C29-035B-4A0E-8C3F-67C03A04D8FD",
+          "31AF1B96-F833-4E05-94AF-4090FF6698A8",
+          "0987CE0B-42FE-471D-A1FF-1D382B4A4C6D",
+          "AA5783F2-64D4-4B10-B6C5-11107F4B5BC5",
+          "8E625C1F-92A3-4B03-A21C-1E247F75D0D9",
+          "BC411C90-5AE5-4E33-9EFB-BBFCC719A03C",
+          "E5655748-0A28-4FE3-830D-79FFBF02F09C",
+          "B9AAF533-B2FD-463C-9371-6256FA4390C5",
+          "80D1EB54-BACC-4F25-A89B-FD6FC2E10F50",
+          "152C51BC-DCAD-47B8-810A-6CB6274F6C74",
+          "4F13CE6D-5ED5-4AD2-BFAD-38C3C1761003"
+        ],
+        "56806714-B354-46CF-85F3-B13A29FC50CB" : [
+          "61908FE5-0568-4084-A6AC-4C69EC2B279C",
+          "BED3C575-E8C6-4826-9CFB-22FE5BE1C0EA",
+          "82F6C305-B431-4CB7-9F95-F1F992044193",
+          "7A8D404A-CD08-4BEB-AE31-CEB05EB947B8",
+          "794B1DA1-46F0-4D5E-A4D5-4640C8D04CE4",
+          "A9829879-417C-416A-B469-3D0CEB0465D8",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      "format" : {
+        "cols" : 12,
+        "rows" : 8
+      },
+      "id" : "FFF8FDAB-07DD-4A91-BC31-05748F410038",
+      "name" : "Plate",
+      "note" : "edge effects suspected",
+      "wellNotes" : {
+        "0" : "bubble in the corner"
+      }
+    }
+  ],
+  "snapshots" : [
+    {
+      "factors" : [
+        {
+          "id" : "01E16226-3231-4DF5-B35A-92CAA2039D4C",
+          "kind" : "categorical",
+          "levels" : [
+            {
+              "colorHex" : "#5889BC",
+              "id" : "C9604EF0-E263-4487-8FD8-D080C73EFE26",
+              "name" : "Untreated"
+            },
+            {
+              "colorHex" : "#F28E2B",
+              "id" : "B3130822-F13C-4F2C-A638-CC5BB4527A98",
+              "name" : "Vehicle"
+            },
+            {
+              "colorHex" : "#59A14F",
+              "id" : "77F7013B-D239-4768-87B0-A5E80127CD1A",
+              "name" : "Treated"
+            }
+          ],
+          "name" : "Condition",
+          "unit" : ""
+        }
+      ],
+      "id" : "F7999C4F-7A8B-4CDE-9035-A77716D6A2FF",
+      "name" : "State 1",
+      "plateID" : "FF8C30D9-999E-4E40-95D8-A73AE665A02C",
+      "plates" : [
+        {
+          "assignments" : {
+            "01E16226-3231-4DF5-B35A-92CAA2039D4C" : [
+              "C9604EF0-E263-4487-8FD8-D080C73EFE26",
+              "C9604EF0-E263-4487-8FD8-D080C73EFE26",
+              "C9604EF0-E263-4487-8FD8-D080C73EFE26",
+              "C9604EF0-E263-4487-8FD8-D080C73EFE26",
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              "C9604EF0-E263-4487-8FD8-D080C73EFE26",
+              "C9604EF0-E263-4487-8FD8-D080C73EFE26",
+              "C9604EF0-E263-4487-8FD8-D080C73EFE26",
+              "C9604EF0-E263-4487-8FD8-D080C73EFE26",
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null
+            ]
+          },
+          "format" : {
+            "cols" : 12,
+            "rows" : 8
+          },
+          "id" : "FF8C30D9-999E-4E40-95D8-A73AE665A02C",
+          "name" : "Plate 1",
+          "note" : "",
+          "wellNotes" : {}
+        }
+      ],
+      "savedAt" : 808494311.892458
+    },
+    {
+      "factors" : [
+        {
+          "id" : "01E16226-3231-4DF5-B35A-92CAA2039D4C",
+          "kind" : "categorical",
+          "levels" : [
+            {
+              "colorHex" : "#5889BC",
+              "id" : "C9604EF0-E263-4487-8FD8-D080C73EFE26",
+              "name" : "Untreated"
+            },
+            {
+              "colorHex" : "#F28E2B",
+              "id" : "B3130822-F13C-4F2C-A638-CC5BB4527A98",
+              "name" : "Vehicle"
+            },
+            {
+              "colorHex" : "#59A14F",
+              "id" : "77F7013B-D239-4768-87B0-A5E80127CD1A",
+              "name" : "Treated"
+            }
+          ],
+          "name" : "Condition",
+          "unit" : ""
+        },
+        {
+          "id" : "56806714-B354-46CF-85F3-B13A29FC50CB",
+          "kind" : "numeric",
+          "levels" : [
+            {
+              "colorHex" : "#CDE3FA",
+              "id" : "61908FE5-0568-4084-A6AC-4C69EC2B279C",
+              "name" : "100"
+            },
+            {
+              "colorHex" : "#B1CFEE",
+              "id" : "BED3C575-E8C6-4826-9CFB-22FE5BE1C0EA",
+              "name" : "10"
+            },
+            {
+              "colorHex" : "#97BBE1",
+              "id" : "82F6C305-B431-4CB7-9F95-F1F992044193",
+              "name" : "1"
+            },
+            {
+              "colorHex" : "#7FA9D5",
+              "id" : "7A8D404A-CD08-4BEB-AE31-CEB05EB947B8",
+              "name" : "0.1"
+            },
+            {
+              "colorHex" : "#6998C8",
+              "id" : "794B1DA1-46F0-4D5E-A4D5-4640C8D04CE4",
+              "name" : "0.01"
+            },
+            {
+              "colorHex" : "#5587BC",
+              "id" : "A9829879-417C-416A-B469-3D0CEB0465D8",
+              "name" : "0"
+            },
+            {
+              "colorHex" : "#5889BC",
+              "id" : "854A2DD2-F644-4A7D-80EC-AB0D10539824",
+              "name" : "Level 1"
+            }
+          ],
+          "name" : "Dose",
+          "unit" : "µM"
+        }
+      ],
+      "id" : "2822D548-5F81-4EB5-B314-57EDFDA4ACD9",
+      "name" : "State 1",
+      "plateID" : "FFF8FDAB-07DD-4A91-BC31-05748F410038",
+      "plates" : [
+        {
+          "assignments" : {
+            "56806714-B354-46CF-85F3-B13A29FC50CB" : [
+              "61908FE5-0568-4084-A6AC-4C69EC2B279C",
+              "BED3C575-E8C6-4826-9CFB-22FE5BE1C0EA",
+              "82F6C305-B431-4CB7-9F95-F1F992044193",
+              "7A8D404A-CD08-4BEB-AE31-CEB05EB947B8",
+              "794B1DA1-46F0-4D5E-A4D5-4640C8D04CE4",
+              "A9829879-417C-416A-B469-3D0CEB0465D8",
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null
+            ]
+          },
+          "format" : {
+            "cols" : 12,
+            "rows" : 8
+          },
+          "id" : "FFF8FDAB-07DD-4A91-BC31-05748F410038",
+          "name" : "Plate",
+          "note" : "",
+          "wellNotes" : {}
+        }
+      ],
+      "savedAt" : 808494311.893087
+    }
+  ],
+  "wellLabelMode" : "allFactors"
+}

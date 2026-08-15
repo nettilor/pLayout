@@ -6,6 +6,43 @@ import AppKit
 
 final class LayoutCompatibilityTests: XCTestCase {
 
+    /// The Python/PySide6 port in `python_port/` writes `.plate` files of its own; every
+    /// one it checks in under `tests/fixtures/port_written/` must open here and survive a
+    /// round trip through this encoder unchanged. Skipped when the folder is absent (a
+    /// clone without the port), never silently green when it is present but empty.
+    func testEveryPortWrittenFixtureOpensAndRoundTrips() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let folder = root.appendingPathComponent("python_port/tests/fixtures/port_written")
+        guard FileManager.default.fileExists(atPath: folder.path) else {
+            throw XCTSkip("no python_port fixtures in this checkout")
+        }
+        let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "plate" }
+        XCTAssertFalse(files.isEmpty, "port_written/ exists but holds no .plate files")
+        for url in files {
+            let data = try Data(contentsOf: url)
+            let layout = try JSONDecoder().decode(Layout.self, from: data)
+            XCTAssertFalse(layout.plates.isEmpty, url.lastPathComponent)
+            XCTAssertFalse(layout.factors.isEmpty, url.lastPathComponent)
+            let again = try JSONDecoder().decode(Layout.self, from: JSONEncoder().encode(layout))
+            XCTAssertEqual(again, layout, url.lastPathComponent)
+            // The port must have written every well column at full length, painted wells
+            // must resolve to real levels, and ids must be in the upper-case form.
+            for plate in layout.plates {
+                for (factorKey, column) in plate.assignments {
+                    XCTAssertEqual(column.count, plate.format.wellCount, "\(url.lastPathComponent): \(factorKey)")
+                    XCTAssertEqual(factorKey, factorKey.uppercased(), url.lastPathComponent)
+                    let factor = layout.factors.first { $0.id.uuidString == factorKey }
+                    XCTAssertNotNil(factor, "\(url.lastPathComponent): assignments key matches no factor")
+                    for raw in column.compactMap({ $0 }) {
+                        XCTAssertNotNil(factor?.level(id: UUID(uuidString: raw)), "\(url.lastPathComponent): dangling level id")
+                    }
+                }
+            }
+        }
+    }
+
     /// Swift's synthesized decoder ignores stored-property defaults, so adding a field
     /// would otherwise make every previously saved document fail to open.
     func testDocumentSavedBeforeTheNewFieldsStillOpens() throws {

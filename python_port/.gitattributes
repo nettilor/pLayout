@@ -1,0 +1,7 @@
+# Windows-side scripts keep CRLF whatever the checkout platform; everything else is LF.
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.iss text eol=crlf
+*.py  text eol=lf
+*.md  text eol=lf
+tests/fixtures/**/*.plate text eol=lf

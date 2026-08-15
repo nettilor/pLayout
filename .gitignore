@@ -43,3 +43,15 @@ Tools/verify/
 # Claude Code guidance and settings — local, like HANDOFF.md, deliberately not published
 CLAUDE.md
 .claude/
+
+# Python port (python_port/): virtualenv, caches and build output — the package itself is committed
+python_port/.venv/
+python_port/dist/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# The port's cross-compatibility fixtures are deliberate example files, not experimental data
+!python_port/tests/fixtures/**/*.plate
+!python_port/tests/fixtures/**/*.csv

@@ -1,0 +1,175 @@
+{
+  "factors" : [
+    {
+      "id" : "32C0C8B3-4FE1-4C1F-8B74-56565D6B2B18",
+      "kind" : "numeric",
+      "levels" : [
+        {
+          "colorHex" : "#CDE3FA",
+          "id" : "929665A0-5780-42BA-823A-0B05F8EB9C45",
+          "name" : "10"
+        },
+        {
+          "colorHex" : "#B1CFEE",
+          "id" : "53B74292-E862-42BA-AAFA-D014B30B9A56",
+          "name" : "3.33"
+        },
+        {
+          "colorHex" : "#97BBE1",
+          "id" : "69871744-9A64-4C71-84E3-CB036C819684",
+          "name" : "1.11"
+        },
+        {
+          "colorHex" : "#7FA9D5",
+          "id" : "CB0C16C1-9D53-408D-9D6D-6AC097FF0A87",
+          "name" : "0.37"
+        },
+        {
+          "colorHex" : "#6998C8",
+          "id" : "12EB78B3-1734-4545-8DDB-4145AB875073",
+          "name" : "0.123"
+        },
+        {
+          "colorHex" : "#5587BC",
+          "id" : "41F61C1B-3693-4695-BC8D-908C4DB15CA7",
+          "name" : "0.0412"
+        },
+        {
+          "colorHex" : "#59A14F",
+          "id" : "425D3A5D-DC3F-4C92-B332-80FFED65B2F3",
+          "name" : "Treated"
+        },
+        {
+          "colorHex" : "#5889BC",
+          "id" : "80BA8EB1-03F2-48BD-9AD1-BC3DCEFC7D69",
+          "name" : "Untreated"
+        },
+        {
+          "colorHex" : "#F28E2B",
+          "id" : "A2C91682-74EA-4AA6-A0E6-01C17EA427D9",
+          "name" : "Vehicle"
+        }
+      ],
+      "name" : "Condition",
+      "unit" : ""
+    }
+  ],
+  "formatVersion" : 1,
+  "notes" : "",
+  "orientation" : "automatic",
+  "padWellLabels" : false,
+  "plates" : [
+    {
+      "assignments" : {
+        "32C0C8B3-4FE1-4C1F-8B74-56565D6B2B18" : [
+          "929665A0-5780-42BA-823A-0B05F8EB9C45",
+          "53B74292-E862-42BA-AAFA-D014B30B9A56",
+          "69871744-9A64-4C71-84E3-CB036C819684",
+          "CB0C16C1-9D53-408D-9D6D-6AC097FF0A87",
+          "12EB78B3-1734-4545-8DDB-4145AB875073",
+          "41F61C1B-3693-4695-BC8D-908C4DB15CA7",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          "929665A0-5780-42BA-823A-0B05F8EB9C45",
+          "53B74292-E862-42BA-AAFA-D014B30B9A56",
+          "69871744-9A64-4C71-84E3-CB036C819684",
+          "CB0C16C1-9D53-408D-9D6D-6AC097FF0A87",
+          "12EB78B3-1734-4545-8DDB-4145AB875073",
+          "41F61C1B-3693-4695-BC8D-908C4DB15CA7",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          "929665A0-5780-42BA-823A-0B05F8EB9C45",
+          "53B74292-E862-42BA-AAFA-D014B30B9A56",
+          "69871744-9A64-4C71-84E3-CB036C819684",
+          "CB0C16C1-9D53-408D-9D6D-6AC097FF0A87",
+          "12EB78B3-1734-4545-8DDB-4145AB875073",
+          "41F61C1B-3693-4695-BC8D-908C4DB15CA7",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          "929665A0-5780-42BA-823A-0B05F8EB9C45",
+          "53B74292-E862-42BA-AAFA-D014B30B9A56",
+          "69871744-9A64-4C71-84E3-CB036C819684",
+          "CB0C16C1-9D53-408D-9D6D-6AC097FF0A87",
+          "12EB78B3-1734-4545-8DDB-4145AB875073",
+          "41F61C1B-3693-4695-BC8D-908C4DB15CA7",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      "format" : {
+        "cols" : 12,
+        "rows" : 8
+      },
+      "id" : "F9D5E192-EBB5-47B5-9163-788DA12C2BA6",
+      "name" : "Plate 1",
+      "note" : "",
+      "wellNotes" : {}
+    }
+  ],
+  "snapshots" : [],
+  "wellLabelMode" : "activeFactor"
+}

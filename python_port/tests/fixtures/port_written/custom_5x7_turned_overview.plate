@@ -1,0 +1,84 @@
+{
+  "factors" : [
+    {
+      "id" : "1B2B5E21-11A6-4FA0-8D61-AD6479FF2938",
+      "kind" : "categorical",
+      "levels" : [
+        {
+          "colorHex" : "#5889BC",
+          "id" : "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "name" : "Untreated"
+        },
+        {
+          "colorHex" : "#F28E2B",
+          "id" : "7CD58029-0F89-4D3A-8952-45CADAD06D36",
+          "name" : "Vehicle"
+        },
+        {
+          "colorHex" : "#59A14F",
+          "id" : "5B4179A4-5260-4789-BE64-88C1B2F8F5C0",
+          "name" : "Treated"
+        }
+      ],
+      "name" : "Condition",
+      "unit" : ""
+    }
+  ],
+  "formatVersion" : 1,
+  "notes" : "",
+  "orientation" : "turned",
+  "padWellLabels" : false,
+  "plates" : [
+    {
+      "assignments" : {
+        "1B2B5E21-11A6-4FA0-8D61-AD6479FF2938" : [
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7",
+          "49874AD8-5EB8-462E-8C83-3E4DF7FA6DD7"
+        ]
+      },
+      "format" : {
+        "cols" : 7,
+        "rows" : 5
+      },
+      "id" : "9467E85C-CEFD-41C8-A32C-7D7C1AD0C1FA",
+      "name" : "Plate 1",
+      "note" : "",
+      "wellNotes" : {}
+    }
+  ],
+  "snapshots" : [],
+  "wellLabelMode" : "overview"
+}
