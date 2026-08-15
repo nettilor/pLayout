@@ -70,6 +70,15 @@ struct PreferencesView: View {
                 choice("Well shape", selection: $preferences.newDocumentWellShape)
                 note(preferences.newDocumentWellShape.note)
             }
+            section("Sidebar") {
+                Toggle(
+                    "Show each factor's number of conditions",
+                    isOn: $preferences.showFactorConditionCounts
+                )
+                .toggleStyle(.checkbox)
+                .font(.callout)
+                note("A count at the end of every factor row, the way conditions show how many wells they cover.")
+            }
         }
     }
 

@@ -257,6 +257,9 @@ well size and the fitting is measured rather than assumed. Both apply to the
 plate — wells, headers, the line key — and travel into exports and print. The
 window's own controls keep the system font, as a Mac app should.
 
+**Sidebar** — whether each factor row shows its number of conditions, the way
+condition rows show how many wells they cover. Off by default.
+
 The first two are shown in a live preview across light and dark conditions, which is
 the quickest way to see what each one costs.
 

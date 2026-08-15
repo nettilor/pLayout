@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct Sidebar: View {
     @ObservedObject var editor: PlateEditor
+    @ObservedObject private var preferences = Preferences.shared
 
     // A click means "select" and a quick second click on the same row means "rename".
     // Timed here rather than recognised as a double-tap gesture, so each row keeps
@@ -32,10 +33,16 @@ struct Sidebar: View {
         Section {
             ForEach(Array(editor.layout.factors.enumerated()), id: \.element.id) { index, factor in
                 let isActive = factor.id == editor.activeFactorID
-                HStack(spacing: 6) {
-                    Image(systemName: isActive ? "largecircle.fill.circle" : "circle")
-                        .foregroundStyle(isActive ? Color.accentColor : Color.secondary.opacity(0.5))
-                        .font(.system(size: 11))
+                // Same shape as a condition row on purpose: keycap on the left (filled
+                // when this is the row in use), tinted row background, count on the
+                // right. What still tells them apart is what genuinely differs — the
+                // cap says ⌘1 rather than 1, and only conditions carry a swatch.
+                HStack(spacing: 7) {
+                    if index < 9 {
+                        KeyCap(label: "⌘\(index + 1)", highlighted: isActive)
+                    } else {
+                        KeyCap(label: "·")
+                    }
                     EditableName(
                         text: factor.name,
                         placeholder: "Factor",
@@ -50,10 +57,14 @@ struct Sidebar: View {
                             .font(.system(size: 9))
                             .foregroundStyle(.tertiary)
                     }
-                    if index < 9 {
-                        KeyCap(label: "⌘\(index + 1)")
+                    if preferences.showFactorConditionCounts {
+                        Text(factor.levels.isEmpty ? "—" : "\(factor.levels.count)")
+                            .font(.caption)
+                            .monospacedDigit()
+                            .foregroundStyle(.tertiary)
                     }
                 }
+                .padding(.vertical, 1)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     // The row keeps exactly one tap gesture (see RowClickTracker), so
@@ -75,7 +86,7 @@ struct Sidebar: View {
                 }
                 .listRowBackground(
                     RoundedRectangle(cornerRadius: 5).fill(
-                        editor.multiSelectedFactorIDs.contains(factor.id)
+                        isActive || editor.multiSelectedFactorIDs.contains(factor.id)
                             ? Color.accentColor.opacity(0.12) : Color.clear
                     )
                 )

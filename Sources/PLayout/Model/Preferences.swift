@@ -221,6 +221,16 @@ final class Preferences: ObservableObject {
         }
     }
 
+    /// Whether each factor row in the sidebar carries its number of conditions at the
+    /// trailing edge, the way condition rows carry their well count. Off by default:
+    /// the count is one click away, and the sidebar earns its calm.
+    @Published var showFactorConditionCounts: Bool {
+        didSet {
+            guard showFactorConditionCounts != oldValue else { return }
+            defaults.set(showFactorConditionCounts, forKey: Self.factorConditionCountsKey)
+        }
+    }
+
     /// Whether launching the app may look at GitHub for a newer release — at most once
     /// a day, silently unless there is one. On by default; switched from the app menu
     /// beside "Check for Updates…" rather than from ⌘,, whose window has no room left
@@ -272,6 +282,7 @@ final class Preferences: ObservableObject {
     private static let emptyWellColorKey = "emptyWellColorHex"
     private static let canvasFontFamilyKey = "canvasFontFamily"
     private static let canvasFontScaleKey = "canvasFontScale"
+    private static let factorConditionCountsKey = "showFactorConditionCounts"
     private static let checkForUpdatesKey = "checkForUpdatesAutomatically"
 
     init(defaults: UserDefaults = .standard) {
@@ -294,6 +305,7 @@ final class Preferences: ObservableObject {
             .flatMap { $0.isEmpty ? nil : $0 }
         let storedScale = defaults.object(forKey: Self.canvasFontScaleKey) as? Double ?? 1.0
         canvasFontScale = min(max(storedScale, 0.7), 1.8)
+        showFactorConditionCounts = defaults.object(forKey: Self.factorConditionCountsKey) as? Bool ?? false
         checkForUpdatesAutomatically = defaults.object(forKey: Self.checkForUpdatesKey) as? Bool ?? true
     }
 
@@ -305,6 +317,7 @@ final class Preferences: ObservableObject {
         emptyWellColorHex = nil
         canvasFontFamily = nil
         canvasFontScale = 1.0
+        showFactorConditionCounts = false
         checkForUpdatesAutomatically = true
     }
 }

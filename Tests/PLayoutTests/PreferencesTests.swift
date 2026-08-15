@@ -28,6 +28,17 @@ final class PreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.activeMarkerStyle, .matchLabel)
         XCTAssertEqual(preferences.newDocumentWellShape, .round)
         XCTAssertEqual(preferences.newConditionColors, .perFactor)
+        XCTAssertFalse(preferences.showFactorConditionCounts)
+    }
+
+    func testFactorConditionCountsRememberAndReset() {
+        let preferences = Preferences(defaults: defaults)
+        preferences.showFactorConditionCounts = true
+        XCTAssertTrue(Preferences(defaults: defaults).showFactorConditionCounts)
+
+        preferences.resetToDefaults()
+        XCTAssertFalse(preferences.showFactorConditionCounts)
+        XCTAssertFalse(Preferences(defaults: defaults).showFactorConditionCounts)
     }
 
     func testTheWellShapeDefaultIsRememberedAndReadable() {
