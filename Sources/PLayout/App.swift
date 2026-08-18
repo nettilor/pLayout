@@ -88,6 +88,18 @@ struct PlateCommands: Commands {
                 .keyboardShortcut("i", modifiers: [.command, .shift])
         }
 
+        // Beside the standard Copy and Paste, because that is exactly what they are —
+        // the same gesture on the whole well rather than on the factor being painted.
+        CommandGroup(after: .pasteboard) {
+            Divider()
+            Button("Copy Wells with All Factors") { editor?.copyWells() }
+                .keyboardShortcut("c", modifiers: [.command, .option])
+                .disabled(editor == nil)
+            Button("Paste Wells") { editor?.pasteWells() }
+                .keyboardShortcut("v", modifiers: [.command, .option])
+                .disabled(editor == nil)
+        }
+
         CommandGroup(after: .toolbar) {
             Button("Zoom In") { editor?.zoomIn() }
                 .keyboardShortcut("+", modifiers: .command)

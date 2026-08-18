@@ -301,6 +301,43 @@ final class PreferencesTests: XCTestCase {
         XCTAssertNil(preferences.emptyWellColorHex)
     }
 
+    // MARK: - Overview block outlines
+
+    func testBlockOutlineColourAndThicknessRememberAndReset() {
+        let preferences = Preferences(defaults: defaults)
+        XCTAssertNil(preferences.groupOutlineColorHex)
+        XCTAssertEqual(preferences.groupOutlineThickness, 1.5)
+
+        preferences.groupOutlineColorHex = "#C1440E"
+        preferences.groupOutlineThickness = 3
+        let reloaded = Preferences(defaults: defaults)
+        XCTAssertEqual(reloaded.groupOutlineColorHex, "#C1440E")
+        XCTAssertEqual(reloaded.groupOutlineThickness, 3)
+        // A chosen colour is used as it is, on screen and on paper alike.
+        XCTAssertEqual(preferences.groupOutlineColor(exportMode: false).hexString, "#C1440E")
+        XCTAssertEqual(preferences.groupOutlineColor(exportMode: true).hexString, "#C1440E")
+
+        defaults.set("chartreuse", forKey: "groupOutlineColorHex")
+        XCTAssertNil(Preferences(defaults: defaults).groupOutlineColorHex)
+
+        preferences.resetToDefaults()
+        XCTAssertNil(preferences.groupOutlineColorHex)
+        XCTAssertEqual(preferences.groupOutlineThickness, 1.5)
+    }
+
+    /// However thick the line is set, it cannot swallow the well it is drawn round —
+    /// at 1536 wells the cell is a few points across.
+    func testBlockOutlineThicknessIsCappedAgainstTheCell() {
+        let preferences = Preferences(defaults: defaults)
+        preferences.groupOutlineThickness = 4
+        XCTAssertEqual(preferences.groupOutlineWidth(cell: 60), 4, "a big cell gets what was asked for")
+        XCTAssertEqual(preferences.groupOutlineWidth(cell: 8), 2, accuracy: 0.001)
+        XCTAssertGreaterThanOrEqual(preferences.groupOutlineWidth(cell: 1), 0.5, "never invisible")
+
+        defaults.set(99.0, forKey: "groupOutlineThickness")
+        XCTAssertEqual(Preferences(defaults: defaults).groupOutlineThickness, 4, "clamped on load")
+    }
+
     // MARK: - Plate text
 
     func testPlateFontRemembersClampsAndResets() {

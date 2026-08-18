@@ -7,6 +7,10 @@ struct CommitTextField: View {
     let placeholder: String
     let text: String
     var font: Font = .body
+    /// A name cannot be blank — the model refuses it and the row would be left looking
+    /// empty — but an optional field like a factor's unit has to be clearable, so the
+    /// two behaviours are chosen here rather than guessed from the value.
+    var allowsEmpty: Bool = false
     let onCommit: (String) -> Void
 
     @State private var draft: String = ""
@@ -37,7 +41,7 @@ struct CommitTextField: View {
         let trimmed = draft.trimmingCharacters(in: .whitespaces)
         // A blank name is refused by the model, which then reports no change at all —
         // so put the old one back rather than leaving the field looking empty.
-        if trimmed.isEmpty {
+        if trimmed.isEmpty && !allowsEmpty {
             draft = text
         } else {
             onCommit(trimmed)

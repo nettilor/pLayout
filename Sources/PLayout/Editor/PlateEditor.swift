@@ -47,6 +47,15 @@ final class PlateEditor: ObservableObject {
     }
     @Published var hovered: WellPos?
     @Published var showSecondaryFactors = true
+    /// Overview only: draw a line round each run of identical wells, so a dense plate
+    /// reads as the blocks it was designed as rather than as a field of stacked text.
+    /// Per window like the two display toggles beside it — this is how you are looking
+    /// at the plate, not something about the plate.
+    @Published var showOverviewGroups = false
+    /// What counts as "identical": nil is every factor at once, a factor id is that one
+    /// alone. Grouping on everything can box each well on its own — an XY position
+    /// factor makes every well unique — and one factor is the coarse view that fixes it.
+    @Published var overviewGroupFactorID: UUID?
     /// Seeded from Preferences when the document opens; the sidebar toggle drives it
     /// afterwards, so changing the default never disturbs a window already up.
     @Published var roundWells = Preferences.shared.newDocumentWellShape.isRound
@@ -129,6 +138,13 @@ final class PlateEditor: ObservableObject {
     /// Reading the plate rather than editing it: no factor is active, so a click
     /// selects wells without painting them.
     var isOverview: Bool { layout.wellLabelMode.isOverview }
+
+    var overviewGroupBasis: WellGrouping.Basis {
+        overviewGroupFactorID.map { WellGrouping.Basis.factor($0) } ?? .allFactors
+    }
+
+    /// Drawn only where it was asked for: Overview, and the toggle on.
+    var drawsOverviewGroups: Bool { isOverview && showOverviewGroups }
 
     var secondaryFactors: [Factor] {
         layout.factors.filter { $0.id != activeFactorID }
@@ -922,6 +938,11 @@ final class PlateEditor: ObservableObject {
            layout.factors.first(where: { $0.id == activeFactorID })?.level(id: spotlight) == nil {
             spotlightLevelID = nil
         }
+        // Grouping on a factor that has just been deleted would silently box nothing;
+        // fall back to grouping on everything, which is the setting's own default.
+        if let grouped = overviewGroupFactorID, !layout.factors.contains(where: { $0.id == grouped }) {
+            overviewGroupFactorID = nil
+        }
         // Undo and redo can delete ⌘-selected rows out from under the sets; a set
         // pruned below two members is no longer a multi-selection at all.
         let factorIDs = Set(layout.factors.map(\.id))
@@ -1015,8 +1036,74 @@ final class PlateEditor: ObservableObject {
         clearSelection()
     }
 
+    /// Copies the selection with **every** factor's value, not just the one being
+    /// painted — the way to lift a piece of a design and put it down somewhere else.
+    /// Excel still gets a readable grid out of it: one cell per well, the factors'
+    /// values joined, which is the same shape as the workbook's one-cell map.
+    func copyWells() {
+        // Rectangular for the same reason `copySelection` is: a block has a shape, and
+        // a bounding box round a discontiguous selection would carry wells that were
+        // deliberately left out.
+        guard customWells == nil else {
+            return flash("Copy Wells needs a rectangular selection.")
+        }
+        guard let plate, let selection else { return }
+        guard !layout.factors.isEmpty else { return flash("Nothing to copy — the layout has no factors.") }
+        let range = selection.clamped(to: plate.format)
+        WellClipboard.capture(plate: plate, factors: layout.factors, range: range).write()
+        let count = range.wellCount
+        flash("Copied \(count) well\(count == 1 ? "" : "s") with all \(layout.factors.count) factors.")
+    }
+
+    /// Puts a copied block back, creating any factor or condition this document has
+    /// not seen. One undo step, however much it had to create.
+    func pasteWells() {
+        guard !isOverview else { return flashOverviewIsReadOnly() }
+        guard let clipboard = WellClipboard.read() else {
+            return flash("No copied wells — use Copy Wells (⌥⌘C) first.")
+        }
+        let index = plateIndex
+        guard index >= 0 else { return }
+
+        let originRow = selection?.minRow ?? 0
+        let originCol = selection?.minCol ?? 0
+        var report = WellClipboard.Report()
+        edit("Paste Wells") { layout in
+            report = clipboard.apply(to: &layout, plateIndex: index, atRow: originRow, col: originCol)
+        }
+
+        selection = WellRange(
+            anchor: WellPos(row: originRow, col: originCol),
+            focus: WellPos(row: originRow + clipboard.rows - 1, col: originCol + clipboard.cols - 1)
+        ).clamped(to: format)
+        customWells = nil
+
+        // A pasted block can create the very factor or condition the sidebar is
+        // pointing at nothing for, so put the brush somewhere valid before saying so.
+        if activeFactorID == nil || layout.factor(id: activeFactorID) == nil {
+            if let first = layout.factors.first { setActiveFactor(first.id) }
+        }
+        if armedLevelID.flatMap({ activeFactor?.level(id: $0) }) == nil {
+            armedLevelID = activeFactor?.levels.first?.id
+        }
+
+        var created: [String] = []
+        if report.createdFactors > 0 {
+            created.append("\(report.createdFactors) factor\(report.createdFactors == 1 ? "" : "s")")
+        }
+        if report.createdConditions > 0 {
+            created.append("\(report.createdConditions) condition\(report.createdConditions == 1 ? "" : "s")")
+        }
+        let tail = created.isEmpty ? "" : " — added \(created.joined(separator: " and "))"
+        flash("Pasted \(report.wells) well\(report.wells == 1 ? "" : "s")\(tail).")
+    }
+
     /// Pastes a block of text values, creating any conditions it has not seen before.
     func pasteFromPasteboard() {
+        // A block copied with ⌥⌘C carries every factor, so ⌘V puts all of it back
+        // rather than painting the active factor with the joined text flavour that
+        // sits beside it for Excel's benefit.
+        if WellClipboard.isOnPasteboard() { return pasteWells() }
         guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else { return }
         guard !isOverview else { return flashOverviewIsReadOnly() }
         guard let factorID = activeFactorID else { return }
@@ -1414,11 +1501,33 @@ final class PlateEditor: ObservableObject {
     }
 
     func exportPNG() {
-        save(data: canvas?.pngData(), name: suggestedBaseName, ext: "png")
+        let options = imageExportAccessory()
+        save(
+            data: self.canvas?.pngData(includingGroupOutlines: self.exportGroups(options)),
+            name: suggestedBaseName, ext: "png", accessory: options
+        )
     }
 
     func exportPDF() {
-        save(data: canvas?.pdfData(), name: suggestedBaseName, ext: "pdf")
+        let options = imageExportAccessory()
+        save(
+            data: self.canvas?.pdfData(includingGroupOutlines: self.exportGroups(options)),
+            name: suggestedBaseName, ext: "pdf", accessory: options
+        )
+    }
+
+    /// Only offered when the plate is actually drawing block outlines — otherwise the
+    /// checkbox would govern something that is not there.
+    private func imageExportAccessory() -> ImageExportAccessory? {
+        guard drawsOverviewGroups else { return nil }
+        return ImageExportAccessory(includesGroups: ImageExportAccessory.remembered)
+    }
+
+    /// Read after the panel closes, since `save` builds its data lazily for exactly this.
+    private func exportGroups(_ options: ImageExportAccessory?) -> Bool {
+        guard let options else { return true }
+        ImageExportAccessory.remember(options.includesGroups)
+        return options.includesGroups
     }
 
     /// Prints the plate exactly as it is currently shown — active factor, label mode

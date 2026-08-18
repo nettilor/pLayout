@@ -58,6 +58,11 @@ paint one factor at a time, and every well keeps a value for each of them.
 
 With a single factor it behaves exactly like a simple condition painter.
 
+Every factor takes an optional **unit** — µM, h, ng/mL, cells/well — under its name in
+the sidebar. It changes nothing on the plate; it travels into the export headings, so
+a `Dose` column arrives as `Dose (µM)` in the Wells sheet, the tidy CSV and the legend.
+Leave it blank and the name is used on its own.
+
 In the sidebar, a **single click** on a factor or condition selects it — anywhere on
 the row, including the name — and a **double click** on the name renames it. Escape
 abandons a rename, Return or clicking away keeps it. A **`⌘`-click** selects several
@@ -99,6 +104,16 @@ them share one size and weight. Choosing it also deselects the factor you were
 painting: nothing is armed, clicking selects wells without changing them, and an edit
 says so rather than quietly doing nothing. Click any factor, press `⇧⌘O` again, or
 pick another setting to go back to exactly what you were doing.
+
+**Group identical wells** is Overview's own checkbox. It draws a line round each run
+of wells that share the same conditions, so a plate reads as the blocks it was
+designed as rather than as a field of stacked text. The line follows the run itself,
+so an L-shaped block gets an L, and the same condition in two corners of the plate
+gets two outlines rather than one rectangle swallowing everything between them. Wells
+with no values at all are left alone. A picker beside it chooses what has to match:
+**All factors**, or any single factor for the coarser view — useful when a factor like
+XY position makes every well unique. Colour and thickness are in Settings; exports ask
+whether to include the lines, and print takes the plate as shown.
 
 Both stacking modes supersede the *Show other factors* checkbox, which is therefore
 hidden while either is on — the stacked list already accounts for every factor. On a
@@ -149,6 +164,7 @@ touches a document that started from it.
 | click off the plate | Deselect |
 | arrows | Move the cursor; `⇧`-arrows extend the selection |
 | pinch | Zoom in; `⌘0` fits the whole plate again |
+| `⌥⌘C` / `⌥⌘V` | Copy the selected wells with every factor, and put them down again |
 | `⌘Z` | Undo (every edit is one step) |
 
 Zoom never goes below "whole plate in view" — that is the resting state, and pinching
@@ -217,9 +233,9 @@ this was true still restore the whole document, and say so in their subtitle.
 
 ## Settings (`⌘,`)
 
-Two things about how a plate is drawn are a matter of taste rather than of the
-experiment, so they live in the Settings window and follow you between documents
-instead of travelling inside a `.plate` file.
+How a plate is drawn is partly a matter of taste rather than of the experiment, so
+those settings live in the Settings window — three tabs, with a live preview below
+them — and follow you between documents instead of travelling inside a `.plate` file.
 
 **Text colour** — *Match the well* picks black or white per condition, whichever is
 legible. *Always black* and *Always white* use one colour throughout: a label that is
@@ -263,6 +279,12 @@ well size and the fitting is measured rather than assumed. Both apply to the
 plate — wells, headers, the line key — and travel into exports and print. The
 window's own controls keep the system font, as a Mac app should.
 
+**Overview blocks** — the colour and thickness of the lines *Group identical wells*
+draws. The default colour follows light and dark mode; pick one and it is used as it
+is, on screen and on paper. Thickness is in points, from hairline to 4 pt, capped on a
+dense plate at a quarter of the well so a 1536 cannot be swallowed by its own
+outlines. A sample under the controls shows both.
+
 **Sidebar** — whether each factor row shows its number of conditions, the way
 condition rows show how many wells they cover. Off by default.
 
@@ -280,6 +302,24 @@ from the palette, so you can build a layout in Excel and paste it in whole. If t
 pasted block still has its row/column headers, they are detected and stripped.
 
 **File → Import Table…** does the same from a CSV or TSV file.
+
+### Copying wells with everything in them
+
+`⌘C` is one factor as text, because its job is to land in Excel. **`⌥⌘C` copies the
+selected wells whole** — every factor's value for every well — and **`⌥⌘V` puts them
+down again** at the selection's top-left corner. That is how a piece of a design is
+repeated: a block of replicates, a dose row, the corner of a plate you want twice.
+
+It travels between documents. Factors and conditions are matched **by name**, and
+anything the receiving document has never seen is created — a missing factor with its
+unit and type, a missing condition in the colour it wore where it was copied from. A
+well that was blank in the copy pastes as blank, because a blank is part of a design.
+However much it had to create, the paste is a single `⌘Z`.
+
+`⌘V` notices a block of wells on the clipboard and takes all of it, so the shortcut
+you already use does the right thing with either kind. Excel is not left out: the same
+copy also puts a plain grid on the clipboard with each well's factors joined into one
+cell, the way the workbook's one-cell map does.
 
 ## Export
 
@@ -304,6 +344,8 @@ pasted block still has its row/column headers, they are detected and stripped.
   your choosing (blank means `+`). Handy for tools that want one label per well.
 - **Tidy CSV (`⇧⌘E`)** — just the one-row-per-well table.
 - **Plate image** — PNG or vector PDF of the plate for a lab notebook or figure.
+  While Overview is drawing block outlines, the save panel asks whether the figure
+  keeps them, and remembers the answer.
 - **Print (`⌘P`)** — the plate exactly as displayed, scaled to fill one page. The
   selection highlight is left out and colours are rendered light, so a dark-mode
   window still prints as a clean figure.
@@ -387,9 +429,9 @@ plate. Autosave, versions and revert come from the standard document machinery.
 Sources/PLayout/
   App.swift              @main scene, menu bar commands
   Model/                 PlateFormat, Layout/Factor/Level/Plate, templates, document
-  Editor/                PlateEditor (all mutations), WellRange
+  Editor/                PlateEditor (all mutations), WellRange, WellGrouping
   Views/                 SwiftUI shell, sidebar, sheets, and the AppKit plate grid
-  IO/                    TSV/CSV, ZIP writer, XLSX writer, workbook builder
+  IO/                    TSV/CSV, ZIP writer, XLSX writer, workbook builder, well clipboard
 Tests/PLayoutTests/      model, clipboard, workbook, painting, rendering, zoom
 Tools/make_icon.swift    draws the app icon
 ```
@@ -403,6 +445,13 @@ Two invariants are worth knowing before changing the drawing code:
 - **Label sizes are continuous functions of the cell size.** Any step — even
   rounding — can make the number of label lines drop as the window grows, which
   reads as labels randomly disappearing. `LabelPlanTests` pins this down.
+- **The Overview block outlines are walked in display space.** The runs themselves are
+  found in model space, where a rotation cannot change which wells are adjacent, but
+  the edges are emitted per *display* cell so a turned plate needs no second opinion
+  about which side of a well an edge is on. Each shared edge is emitted once, by the
+  cell above or to the left of it: emitting it twice darkens every internal boundary
+  against the outer ones. `WellGroupingTests` pins the perimeter count across all four
+  quarter turns.
 - **The plate view's document keeps its unmagnified size.** Zoom is `NSScrollView`
   magnification, so if the document view tracked the clip view's *bounds* it would
   re-fit the plate smaller and cancel the zoom exactly out. `PlateScrollView.tile()`

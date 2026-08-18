@@ -140,14 +140,19 @@ struct Sidebar: View {
     private var conditionsSection: some View {
         Section {
             if let factor = editor.activeFactor {
-                if !factor.unit.isEmpty || factor.kind == .numeric {
-                    HStack(spacing: 6) {
-                        Text("Unit")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        CommitTextField(placeholder: "µM, h, ng/mL…", text: factor.unit, font: .caption) {
-                            editor.setFactorUnit(factor.id, unit: $0)
-                        }
+                // Every factor gets the field, not just the numeric ones: a cell line
+                // has no unit but a seeding density, a timepoint and a volume all do,
+                // and none of them is a dose. Optional throughout — left blank it
+                // changes nothing, filled in it travels into every export heading.
+                HStack(spacing: 6) {
+                    Text("Unit")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    CommitTextField(
+                        placeholder: "µM, h, ng/mL…", text: factor.unit, font: .caption,
+                        allowsEmpty: true
+                    ) {
+                        editor.setFactorUnit(factor.id, unit: $0)
                     }
                 }
 
@@ -366,6 +371,24 @@ struct Sidebar: View {
                 Toggle("Show other factors", isOn: $editor.showSecondaryFactors)
                     .disabled(editor.layout.factors.count < 2)
                     .help("Adds a colour strip along the bottom of each well for the factors you are not painting.")
+            }
+            // Overview's own control: the mode shows every factor at once, which says
+            // what is in a well but not where a block starts and stops.
+            if editor.layout.wellLabelMode.isOverview {
+                Toggle("Group identical wells", isOn: $editor.showOverviewGroups)
+                    .help("Draws a line round each run of wells that share the same conditions, so the plate reads as blocks.")
+                if editor.showOverviewGroups {
+                    Picker("", selection: $editor.overviewGroupFactorID) {
+                        Text("All factors").tag(UUID?.none)
+                        ForEach(editor.layout.factors) { factor in
+                            Text(factor.name).tag(UUID?.some(factor.id))
+                        }
+                    }
+                    .labelsHidden()
+                    .controlSize(.small)
+                    .padding(.leading, 18)
+                    .help("What has to match for two wells to be in the same block.")
+                }
             }
             Toggle("Round wells", isOn: $editor.roundWells)
                 .help("Ignored while stacked labels are showing — they need the full width of the well, so those are drawn as squares.")

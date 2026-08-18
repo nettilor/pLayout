@@ -442,6 +442,7 @@ struct ShortcutsCard: View {
         Row(key: "pinch", detail: "Zoom in  ·  ⌘0 fits the plate again"),
         Row(key: "⌘C  /  ⌘V", detail: "Copy / paste as Excel cells"),
         Row(key: "⇧⌘C", detail: "Copy including row & column headers"),
+        Row(key: "⌥⌘C  /  ⌥⌘V", detail: "Copy / paste wells with every factor"),
         Row(key: "⌘P", detail: "Print the plate as shown"),
         Row(key: "⌥⌘S", detail: "Save this layout as a state you can return to"),
         Row(key: "⌥⌘R", detail: "Revert to the last saved state"),

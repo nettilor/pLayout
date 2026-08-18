@@ -196,6 +196,33 @@ final class Preferences: ObservableObject {
         }
     }
 
+    /// The colour of the Overview block outlines — nil for the default, which follows
+    /// light and dark mode the way the well ink does. Stored as "no opinion" rather
+    /// than as a copy of the default, for the same reason the empty-well colour is.
+    @Published var groupOutlineColorHex: String? {
+        didSet {
+            guard groupOutlineColorHex != oldValue else { return }
+            if let hex = groupOutlineColorHex {
+                defaults.set(hex, forKey: Self.groupOutlineColorKey)
+            } else {
+                defaults.removeObject(forKey: Self.groupOutlineColorKey)
+            }
+        }
+    }
+
+    /// How heavy those outlines are, in points. An absolute width rather than a
+    /// multiplier: unlike the label sizes, this one is not solved against anything —
+    /// what you ask for is what is drawn, up to the cap a dense plate imposes.
+    @Published var groupOutlineThickness: Double {
+        didSet {
+            guard groupOutlineThickness != oldValue else { return }
+            defaults.set(groupOutlineThickness, forKey: Self.groupOutlineThicknessKey)
+        }
+    }
+
+    static let groupOutlineThicknessRange: ClosedRange<Double> = 0.5...4
+    static let defaultGroupOutlineThickness: Double = 1.5
+
     /// The plate's typeface — nil for the system font. Scoped to the canvas (wells,
     /// headers, the line key) and to what the canvas renders: exports and print. The
     /// window's own controls keep the system font; refonting macOS chrome is neither
@@ -274,12 +301,28 @@ final class Preferences: ObservableObject {
         return NSColor.quaternaryLabelColor.withAlphaComponent(exportMode ? 0.10 : 0.13)
     }
 
+    /// The pen for the Overview block outlines. A chosen colour is used as it is, as
+    /// everywhere else; the default is ink at a weight that reads over a pale tile and
+    /// a dark one, a shade firmer on paper where there is no backlight to help it.
+    func groupOutlineColor(exportMode: Bool) -> NSColor {
+        if let hex = groupOutlineColorHex, let custom = NSColor(hex: hex) { return custom }
+        return NSColor.labelColor.withAlphaComponent(exportMode ? 0.9 : 0.75)
+    }
+
+    /// The chosen thickness, capped against the cell: at 1536 wells a 4pt line would
+    /// leave nothing of the well it was drawn round.
+    func groupOutlineWidth(cell: CGFloat) -> CGFloat {
+        min(CGFloat(groupOutlineThickness), max(0.5, cell * 0.25))
+    }
+
     private let defaults: UserDefaults
     private static let wellTextStyleKey = "wellTextStyle"
     private static let activeMarkerStyleKey = "activeMarkerStyle"
     private static let wellShapeKey = "newDocumentWellShape"
     private static let newConditionColorsKey = "newConditionColors"
     private static let emptyWellColorKey = "emptyWellColorHex"
+    private static let groupOutlineColorKey = "groupOutlineColorHex"
+    private static let groupOutlineThicknessKey = "groupOutlineThickness"
     private static let canvasFontFamilyKey = "canvasFontFamily"
     private static let canvasFontScaleKey = "canvasFontScale"
     private static let factorConditionCountsKey = "showFactorConditionCounts"
@@ -301,6 +344,14 @@ final class Preferences: ObservableObject {
         // "no opinion", not as a black well or a crash.
         emptyWellColorHex = defaults.string(forKey: Self.emptyWellColorKey)
             .flatMap { NSColor(hex: $0) != nil ? $0 : nil }
+        groupOutlineColorHex = defaults.string(forKey: Self.groupOutlineColorKey)
+            .flatMap { NSColor(hex: $0) != nil ? $0 : nil }
+        let storedThickness = defaults.object(forKey: Self.groupOutlineThicknessKey) as? Double
+            ?? Self.defaultGroupOutlineThickness
+        groupOutlineThickness = min(
+            max(storedThickness, Self.groupOutlineThicknessRange.lowerBound),
+            Self.groupOutlineThicknessRange.upperBound
+        )
         canvasFontFamily = defaults.string(forKey: Self.canvasFontFamilyKey)
             .flatMap { $0.isEmpty ? nil : $0 }
         let storedScale = defaults.object(forKey: Self.canvasFontScaleKey) as? Double ?? 1.0
@@ -315,6 +366,8 @@ final class Preferences: ObservableObject {
         newDocumentWellShape = .round
         newConditionColors = .perFactor
         emptyWellColorHex = nil
+        groupOutlineColorHex = nil
+        groupOutlineThickness = Self.defaultGroupOutlineThickness
         canvasFontFamily = nil
         canvasFontScale = 1.0
         showFactorConditionCounts = false

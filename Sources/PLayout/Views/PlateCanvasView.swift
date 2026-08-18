@@ -258,6 +258,10 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     private var isPaintingDrag = false
 
     private var exportMode = false
+    /// Whether an exported image carries the Overview block outlines. Asked in the save
+    /// panel and set for the one render — printing takes the plate exactly as shown,
+    /// which is the promise the print command already makes.
+    private var exportIncludesGroups = true
     /// Drives the corner control's hover state; a click target with no feedback reads
     /// as decoration.
     private var hoveringCorner = false
@@ -484,6 +488,16 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         if !stacked.isEmpty {
             drawLineKey(
                 stacked: stacked, striped: stripeFactors.count, hidden: hiddenFactorCount, geo: geo
+            )
+        }
+
+        // Part of the picture rather than an interface hint, so it is drawn above the
+        // export guard: a figure of the layout keeps its chunking. Whether an exported
+        // image includes it is asked in the save panel, not decided here.
+        if editor.drawsOverviewGroups, !exportMode || exportIncludesGroups {
+            drawGroupOutlines(
+                geo: geo, plate: plate, factors: editor.layout.factors,
+                basis: editor.overviewGroupBasis
             )
         }
 
@@ -812,6 +826,83 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     /// image has no sidebar, so it is the only way to know what line 2 means.
     /// It lives in the padding the geometry always leaves below the plate, so it never
     /// competes with the wells for space.
+    /// A line round every run of identical wells — the outline of the run itself, so an
+    /// L-shaped block gets an L, and the same condition in two corners gets two outlines
+    /// rather than one rectangle swallowing everything between them.
+    ///
+    /// Walked in *display* space so the outline is correct on a turned plate without
+    /// this code knowing the plate is turned: a rotation carries adjacency with it, and
+    /// `modelPosition` is the only thing here that crosses between the two spaces.
+    /// The outline as line segments, so the rule can be checked without a screenshot.
+    /// One segment per cell edge, deliberately unmerged: a run of them draws as one
+    /// straight line anyway, and counting them is what makes the rule testable.
+    static func groupOutlineSegments(
+        geo: PlateGeometry, blocks: [Int?], format: PlateFormat
+    ) -> [(CGPoint, CGPoint)] {
+        func block(displayRow: Int, displayCol: Int) -> Int? {
+            guard displayRow >= 0, displayRow < geo.displayRows,
+                  displayCol >= 0, displayCol < geo.displayCols
+            else { return nil }
+            let pos = geo.modelPosition(displayRow: displayRow, displayCol: displayCol)
+            guard format.contains(row: pos.row, col: pos.col) else { return nil }
+            let index = format.index(row: pos.row, col: pos.col)
+            return blocks.indices.contains(index) ? blocks[index] : nil
+        }
+
+        var segments: [(CGPoint, CGPoint)] = []
+        for row in 0..<geo.displayRows {
+            for col in 0..<geo.displayCols {
+                let here = block(displayRow: row, displayCol: col)
+                let pos = geo.modelPosition(displayRow: row, displayCol: col)
+                guard format.contains(row: pos.row, col: pos.col) else { continue }
+                let rect = geo.cellRect(row: pos.row, col: pos.col)
+
+                // Each shared edge is taken once, by the cell above or to the left of
+                // it; the two leading edges of the grid have no such cell, so they are
+                // taken here. Drawing an edge twice would darken every internal
+                // boundary against the outer ones.
+                if row == 0, here != nil {
+                    segments.append((CGPoint(x: rect.minX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.minY)))
+                }
+                if col == 0, here != nil {
+                    segments.append((CGPoint(x: rect.minX, y: rect.minY), CGPoint(x: rect.minX, y: rect.maxY)))
+                }
+                let below = block(displayRow: row + 1, displayCol: col)
+                if here != below, here != nil || below != nil {
+                    segments.append((CGPoint(x: rect.minX, y: rect.maxY), CGPoint(x: rect.maxX, y: rect.maxY)))
+                }
+                let right = block(displayRow: row, displayCol: col + 1)
+                if here != right, here != nil || right != nil {
+                    segments.append((CGPoint(x: rect.maxX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.maxY)))
+                }
+            }
+        }
+        return segments
+    }
+
+    private func drawGroupOutlines(
+        geo: PlateGeometry, plate: Plate, factors: [Factor], basis: WellGrouping.Basis
+    ) {
+        let blocks = WellGrouping.blocks(plate: plate, factors: factors, basis: basis)
+        let segments = Self.groupOutlineSegments(geo: geo, blocks: blocks, format: plate.format)
+        guard !segments.isEmpty else { return }
+
+        let path = NSBezierPath()
+        for (from, to) in segments {
+            path.move(to: from)
+            path.line(to: to)
+        }
+
+        // Ink rather than accent: the accent colour is the selection's, and a block
+        // outline that borrowed it would read as "these wells are selected". Both the
+        // colour and the weight are Settings choices — this is taste about how a plate
+        // should look, so it belongs there rather than in the document.
+        Preferences.shared.groupOutlineColor(exportMode: exportMode).setStroke()
+        path.lineWidth = Preferences.shared.groupOutlineWidth(cell: geo.cell)
+        path.lineCapStyle = .square
+        path.stroke()
+    }
+
     private func drawLineKey(stacked: [Factor], striped: Int, hidden: Int, geo: PlateGeometry) {
         // Spans the canvas rather than the plate: a small plate sits centred, and
         // anchoring the key to it would throw away the whole left margin and clip
@@ -1276,17 +1367,27 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
             return super.performKeyEquivalent(with: event)
         }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        guard modifiers == .command || modifiers == [.command, .shift] else {
+        guard modifiers == .command || modifiers == [.command, .shift]
+                || modifiers == [.command, .option]
+        else {
             return super.performKeyEquivalent(with: event)
         }
+        let option = modifiers.contains(.option)
         switch event.charactersIgnoringModifiers?.lowercased() {
         case "c":
-            editor.copySelection(includeHeaders: modifiers.contains(.shift)); return true
+            // ⌥⌘C is the whole well — every factor — where ⌘C is the active factor as
+            // cells for Excel.
+            option
+                ? editor.copyWells()
+                : editor.copySelection(includeHeaders: modifiers.contains(.shift))
+            return true
         case "x":
+            guard !option else { return super.performKeyEquivalent(with: event) }
             editor.cutSelection(); return true
         case "v":
-            editor.pasteFromPasteboard(); return true
+            option ? editor.pasteWells() : editor.pasteFromPasteboard(); return true
         case "a":
+            guard !option else { return super.performKeyEquivalent(with: event) }
             editor.selectAllWells(); return true
         default:
             return super.performKeyEquivalent(with: event)
@@ -1317,19 +1418,25 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         return CGPoint(x: rect.midX, y: rect.midY)
     }
 
-    func pngData() -> Data? {
+    func pngData(includingGroupOutlines: Bool = true) -> Data? {
         guard bounds.width > 4, bounds.height > 4,
               let rep = bitmapImageRepForCachingDisplay(in: bounds)
         else { return nil }
         exportMode = true
+        exportIncludesGroups = includingGroupOutlines
         cacheDisplay(in: bounds, to: rep)
         exportMode = false
+        exportIncludesGroups = true
         return rep.representation(using: .png, properties: [:])
     }
 
-    func pdfData() -> Data {
+    func pdfData(includingGroupOutlines: Bool = true) -> Data {
         exportMode = true
-        defer { exportMode = false }
+        exportIncludesGroups = includingGroupOutlines
+        defer {
+            exportMode = false
+            exportIncludesGroups = true
+        }
         return dataWithPDF(inside: bounds)
     }
 

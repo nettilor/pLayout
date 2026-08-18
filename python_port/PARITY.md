@@ -1,6 +1,6 @@
 # Feature parity — Mac pLayout ⇄ Python port
 
-Checked against Mac version **1.4** (1.5 in progress); last updated 2026-08-15 after M7. Port version `1.4.0` (`playout.__version__`).
+Checked against Mac version **1.4** (1.5 in progress); last updated 2026-08-18 with the first 1.5 rows. Port version `1.4.0` (`playout.__version__`).
 Legend: ✅ ported and tested · 🚧 partial · ⏳ not started · ⛔ deliberately not on Windows.
 "Port keys" use Ctrl/Alt/Shift for ⌘/⌥/⇧; on a Mac running the port, Ctrl-sequences render as ⌘.
 
@@ -31,6 +31,8 @@ Mac `ShortcutsCard`, the README table, the menu item **and this file** in the sa
 | Spotlight a condition on sidebar hover | | | ✅ | M3 | 1.5 feature |
 | Layout templates: Save as Template… / New from Template / Remove | | | ✅ | M3 | File menu |
 | Per-well and per-plate notes; corner mark; status bar; Note column in exports | ⌥⌘N | Ctrl+Alt+N | ✅ | M4 | |
+| Overview block outlines: "Group identical wells" + All factors / one factor picker | | | ⏳ | — | 1.5; runs of identical wells, not bounding boxes; walked in display space |
+| Unit field on every factor, not only numeric ones; clearable | | | ⏳ | — | 1.5; the model field already exists both sides |
 
 ## Colours
 
@@ -45,10 +47,12 @@ Mac `ShortcutsCard`, the README table, the menu item **and this file** in the sa
 | Feature | Mac keys | Port keys | Status | Milestone | Notes |
 |---|---|---|---|---|---|
 | ⌘C / ⇧⌘C copy as cells, ⌘V paste back (new values → conditions), header detection | ⌘C ⇧⌘C ⌘V | Ctrl+C, Ctrl+Shift+C, Ctrl+V | ✅ | M3 | Edit menu; Copy with Headers listed there |
+| Copy / paste wells with every factor, across documents | ⌥⌘C ⌥⌘V | Ctrl+Alt+C, Ctrl+Alt+V | ⏳ | — | 1.5; private pasteboard flavour `com.nettilor.playout.wells` (JSON) plus a joined-text grid; ⌘V routes to it when present |
 | File → Import Table (CSV/TSV) | ⇧⌘I | Ctrl+Shift+I | ✅ | M3 | |
 | Excel workbook export: maps, Wells, Legend; arrangements; scope; one-cell map | ⌘E | Ctrl+E | ✅ | M4 | openpyxl; options asked before the save dialog |
 | Tidy CSV export | ⇧⌘E | Ctrl+Shift+E | ✅ | M4 | |
 | Plate image PNG / PDF; print scaled to one page | ⌘P | Ctrl+P | ✅ | M4 | PNG at the on-screen size × DPR, vector PDF |
+| Image export asks whether to include the Overview block outlines | | | ⏳ | — | 1.5; remembered like the workbook options |
 
 ## Settings
 
@@ -60,6 +64,7 @@ Mac `ShortcutsCard`, the README table, the menu item **and this file** in the sa
 | Plate typeface and text size | ✅ | M6 | |
 | Sidebar: per-factor condition counts | ✅ | M6 | |
 | Settings window in tabs | ✅ | M6 | |
+| Overview block outline colour and thickness | ⏳ | — | 1.5; default colour follows light/dark, thickness capped at a quarter of the cell |
 
 ## App and distribution
 

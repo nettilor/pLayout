@@ -103,6 +103,37 @@ struct PreferencesView: View {
                     ? "The default follows light and dark mode."
                     : "A chosen colour is used as it is, everywhere — light mode, dark mode, Overview's backdrop, exports and print.")
             }
+            section("Overview blocks") {
+                HStack(spacing: 10) {
+                    ColorPicker("", selection: groupOutlineColor, supportsOpacity: false)
+                        .labelsHidden()
+                    Text("Line round wells that match")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Reset to Default") { preferences.groupOutlineColorHex = nil }
+                        .disabled(preferences.groupOutlineColorHex == nil)
+                }
+                HStack(spacing: 10) {
+                    Text("Thickness")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Slider(
+                        value: $preferences.groupOutlineThickness,
+                        in: Preferences.groupOutlineThicknessRange, step: 0.5
+                    )
+                    Text(String(format: "%.1f pt", preferences.groupOutlineThickness))
+                        .font(.callout.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, alignment: .trailing)
+                }
+                BlockOutlinePreview(
+                    color: preferences.groupOutlineColor(exportMode: false),
+                    width: preferences.groupOutlineThickness,
+                    tile: preferences.emptyWellFill(exportMode: false)
+                )
+                note("Drawn in Overview when “Group identical wells” is on. On a dense plate the line is capped at a quarter of the well, however thick it is set here.")
+            }
         }
     }
 
@@ -170,6 +201,22 @@ struct PreferencesView: View {
         )
     }
 
+    /// Same shape as the empty-well binding: the swatch shows the resolved default
+    /// until a choice is made, so it never shows a colour the plate is not using.
+    private var groupOutlineColor: Binding<Color> {
+        Binding(
+            get: {
+                let ink = preferences.groupOutlineColor(exportMode: false)
+                guard ink.alphaComponent < 1 else { return Color(nsColor: ink) }
+                let flat = NSColor.windowBackgroundColor.blended(
+                    withFraction: ink.alphaComponent, of: ink.withAlphaComponent(1)
+                ) ?? ink
+                return Color(nsColor: flat)
+            },
+            set: { preferences.groupOutlineColorHex = NSColor($0).hexString }
+        )
+    }
+
     private func section(
         _ title: String, @ViewBuilder content: () -> some View
     ) -> some View {
@@ -209,6 +256,28 @@ struct PreferencesView: View {
             .foregroundStyle(.secondary)
             .lineLimit(nil)
             .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Three wells with the block outline round them — the setting shown rather than
+/// described, since a colour and a line weight are exactly the two things a sentence
+/// cannot convey.
+private struct BlockOutlinePreview: View {
+    let color: NSColor
+    let width: Double
+    let tile: NSColor
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(0..<3, id: \.self) { _ in
+                Rectangle()
+                    .fill(Color(nsColor: tile))
+                    .frame(width: 34, height: 24)
+                    .overlay(Rectangle().strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
+            }
+        }
+        .overlay(Rectangle().strokeBorder(Color(nsColor: color), lineWidth: width))
+        .padding(.vertical, 2)
     }
 }
 
