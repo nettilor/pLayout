@@ -199,7 +199,15 @@ enum Exporter {
         var layout = layout
         if let plateID {
             let kept = layout.plates.filter { $0.id == plateID }
-            if !kept.isEmpty { layout.plates = kept }
+            if !kept.isEmpty {
+                layout.plates = kept
+                // The prep sheet counts wells across whatever plates it is handed, so a
+                // setup scoped to a plate this workbook does not contain would count
+                // none at all. One filter at the top, and nothing downstream disagrees.
+                if let scoped = layout.prep?.plateID, scoped != plateID {
+                    layout.prep?.plateID = plateID
+                }
+            }
         }
         var sheets: [XLSX.Sheet] = []
 
@@ -224,6 +232,12 @@ enum Exporter {
 
         sheets.append(tidySheet(layout: layout))
         sheets.append(legendSheet(layout: layout))
+        // Last, so no existing workbook changes shape, and only when the document has a
+        // prep setup — which is the opt-in, and why there is no extra save-panel control.
+        if layout.prep?.includeInWorkbook == true,
+           let plan = DilutionPlan.make(from: layout), !plan.isEmpty {
+            sheets.append(prepSheet(plan: plan))
+        }
         return XLSX.build(sheets: sheets)
     }
 
@@ -361,6 +375,87 @@ enum Exporter {
             }
         }
         return grid
+    }
+
+    /// The bench recipe as a sheet: what to put in which tube, and how much of it.
+    ///
+    /// Volumes arrive already rounded to what a pipette can be set to — the writer has no
+    /// number formats, so a raw 138.6666 would print in full.
+    private static func prepSheet(plan: DilutionPlan) -> XLSX.Sheet {
+        var rows: [[XLSX.Cell]] = []
+        let setup = plan.setup
+
+        func line(_ label: String, _ value: String) {
+            rows.append([XLSX.Cell(value: .text(label), bold: true), .text(value)])
+        }
+        func volume(_ value: Double?) -> XLSX.Cell {
+            guard let value else { return .text("—") }
+            return XLSX.Cell(value: .number(value))
+        }
+
+        rows.append([XLSX.Cell(value: .text("Pipetting prep — \(plan.doseFactorName)"), bold: true)])
+        line("Covers", plan.scopeText)
+        line(
+            "In each well",
+            "\(number(setup.wellVolume)) µL, of which \(number(setup.addedVolume)) µL is added"
+                + " — tubes are \(number(setup.foldOverWell))× working solutions"
+        )
+        line("Make extra", setup.overage.label)
+        line("Diluent", setup.diluent)
+        if !plan.doseUnit.isEmpty { line("Doses in", plan.doseUnit) }
+
+        for compound in plan.compounds where !compound.steps.isEmpty {
+            rows.append([])
+            var heading = [
+                XLSX.Cell(
+                    value: .text(compound.displayName), fillHex: compound.colorHex,
+                    bold: true, centered: false
+                ),
+            ]
+            heading.append(.text(compound.stock.map { "stock \($0.label)" } ?? "no stock set"))
+            heading.append(.text(compound.method.label))
+            rows.append(heading)
+            rows.append(
+                ["Dose", "In tube", "Wells", "From", "Take (µL)", "+ Diluent (µL)", "= Make (µL)"]
+                    .map { XLSX.Cell.header($0) }
+            )
+            for step in compound.steps {
+                let from: String
+                switch step.source {
+                case .stock: from = "stock"
+                case .tube(let index): from = "tube \(index + 1)"
+                case .neatSolvent: from = "solvent"
+                case .diluentOnly: from = "—"
+                }
+                rows.append([
+                    .text(step.isVehicle ? "vehicle" : step.doseName),
+                    step.isVehicle ? .text("—") : XLSX.Cell(value: .number(step.working)),
+                    XLSX.Cell(value: .number(Double(step.wells))),
+                    .text(from),
+                    volume(step.sourceVolume),
+                    volume(step.diluent),
+                    volume(step.total),
+                ])
+            }
+        }
+
+        let warnings = plan.allWarnings
+        if !warnings.isEmpty {
+            rows.append([])
+            rows.append([XLSX.Cell(value: .text("Before you start"), bold: true)])
+            for warning in warnings {
+                rows.append([.text(""), .text(warning.text)])
+            }
+        }
+
+        return XLSX.Sheet(
+            name: "Prep", rows: rows, columnWidths: [14, 12, 8, 12, 14, 16, 15],
+            freezeRows: 0, freezeCols: 0
+        )
+    }
+
+    private static func number(_ value: Double) -> String {
+        PlateEditor.formatValue(value, significantDigits: 4)
     }
 
     private static func tidySheet(layout: Layout) -> XLSX.Sheet {

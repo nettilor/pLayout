@@ -2,16 +2,66 @@ import Foundation
 
 // MARK: - Level
 
+/// What is in the tube on the shelf. A level name only ever carries the *dose*, so this
+/// is the one concentration the document has to be told before it can work out what to
+/// pipette. The unit is free text like `Factor.unit`, and read by `ConcentrationUnit`.
+struct StockConcentration: Codable, Hashable {
+    var value: Double
+    var unit: String
+
+    init(value: Double, unit: String) {
+        self.value = value
+        self.unit = unit
+    }
+
+    /// Hand-written for the reason every type in this file is: a synthesized decoder
+    /// ignores stored-property defaults, so a field added later would break saved files.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        value = try container.decodeIfPresent(Double.self, forKey: .value) ?? 0
+        unit = try container.decodeIfPresent(String.self, forKey: .unit) ?? ""
+    }
+
+    var isUsable: Bool { value > 0 }
+
+    /// "10 mM", or "10" when no unit was given.
+    var label: String {
+        let number = PlateEditor.formatValue(value, significantDigits: 4)
+        return unit.isEmpty ? number : "\(number) \(unit)"
+    }
+}
+
 /// One value a factor can take, e.g. "10 µM" or "HeLa".
 struct Level: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
     var name: String
     var colorHex: String
+    /// Only meaningful on a level of the compound factor — the stock that condition is
+    /// diluted from. nil everywhere else, which is also what every document written
+    /// before the prep sheet decodes to.
+    ///
+    /// It lives here rather than in a table on `Layout` because of lifetime: a side
+    /// table would need a matching prune in `removeLevel`, `removeFactor` and
+    /// `pruneUnusedLevels`, and a missed one leaves a stock pointing at a condition that
+    /// no longer exists. Here, deleting the condition takes its stock with it.
+    var stock: StockConcentration?
 
-    init(id: UUID = UUID(), name: String, colorHex: String) {
+    init(id: UUID = UUID(), name: String, colorHex: String, stock: StockConcentration? = nil) {
         self.id = id
         self.name = name
         self.colorHex = colorHex
+        self.stock = stock
+    }
+
+    /// Hand-written like the rest of this file. `id`, `name` and `colorHex` are decoded
+    /// strictly — a level missing those is corrupt and should fail loudly, exactly as
+    /// `Plate` treats its own three — while anything added since uses `decodeIfPresent`.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        colorHex = try container.decode(String.self, forKey: .colorHex)
+        stock = try container.decodeIfPresent(StockConcentration.self, forKey: .stock)
     }
 }
 
@@ -331,6 +381,123 @@ struct Plate: Identifiable, Codable, Hashable {
     }
 }
 
+// MARK: - Pipetting
+
+/// How much more than the wells strictly need each tube should hold, so there is
+/// something left in the trough when the last well is filled.
+///
+/// A flat struct rather than an enum with associated values: it decodes leniently like
+/// everything else here, and switching mode does not throw away the number already typed.
+struct Overage: Codable, Hashable {
+    enum Mode: String, Codable, CaseIterable, Identifiable {
+        case percent
+        case percentWithMinimum
+        case fixed
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .percent: return "Percentage"
+            case .percentWithMinimum: return "Percentage, at least"
+            case .fixed: return "Fixed volume"
+            }
+        }
+    }
+
+    var mode: Mode = .percent
+    var percent: Double = 20
+    /// µL. The floor under `.percentWithMinimum`, and the whole extra under `.fixed`.
+    var minimumExtra: Double = 50
+    var fixedExtra: Double = 50
+
+    init(mode: Mode = .percent, percent: Double = 20, minimumExtra: Double = 50, fixedExtra: Double = 50) {
+        self.mode = mode
+        self.percent = percent
+        self.minimumExtra = minimumExtra
+        self.fixedExtra = fixedExtra
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        mode = (try? container.decodeIfPresent(Mode.self, forKey: .mode)).flatMap { $0 } ?? .percent
+        percent = try container.decodeIfPresent(Double.self, forKey: .percent) ?? 20
+        minimumExtra = try container.decodeIfPresent(Double.self, forKey: .minimumExtra) ?? 50
+        fixedExtra = try container.decodeIfPresent(Double.self, forKey: .fixedExtra) ?? 50
+    }
+
+    /// The extra µL on top of what the wells themselves take.
+    func extra(onWellsVolume base: Double) -> Double {
+        switch mode {
+        case .percent: return max(0, base * percent / 100)
+        case .percentWithMinimum: return max(max(0, base * percent / 100), max(0, minimumExtra))
+        case .fixed: return max(0, fixedExtra)
+        }
+    }
+
+    /// Printed in the table header, so the paper says which rule made the numbers.
+    var label: String {
+        func number(_ value: Double) -> String {
+            PlateEditor.formatValue(value, significantDigits: 4)
+        }
+        switch mode {
+        case .percent: return "+\(number(percent)) %"
+        case .percentWithMinimum: return "+\(number(percent)) %, at least \(number(minimumExtra)) µL"
+        case .fixed: return "+\(number(fixedExtra)) µL"
+        }
+    }
+}
+
+/// The bench parameters behind the prep sheet.
+///
+/// In the document rather than in `Preferences` because they describe *this experiment* —
+/// the well volume of a 384 is not a matter of taste — and because `Exporter.workbook`
+/// only ever sees a `Layout`, which is what lets the prep tab exist without threading a
+/// new argument through every export path.
+struct PrepSetup: Codable, Hashable {
+    var doseFactorID: UUID?
+    /// nil means one series for the whole plate rather than one per compound.
+    var compoundFactorID: UUID?
+    /// nil means every plate in the document.
+    var plateID: UUID?
+    /// µL in the well *after* the addition.
+    var wellVolume: Double = 100
+    /// µL of working solution pipetted into each well. Together with `wellVolume` this
+    /// is what separates "spike 10 µL of a 10× stock" from "replace the medium with
+    /// 100 µL of 1×" — a single well volume silently assumes the latter.
+    var addedVolume: Double = 100
+    var overage: Overage = Overage()
+    /// The stock, when no compound factor is chosen and there is therefore no condition
+    /// to hang one on. Ignored once a compound factor is picked — each compound's own
+    /// stock lives on its condition, where deleting the condition takes it with it.
+    var stock: StockConcentration?
+    /// µL. Warnings only: nothing is refused for being small, it is flagged.
+    var minimumPipetteVolume: Double = 2
+    /// What the tubes are made up in, for the printout to name.
+    var diluent: String = "medium"
+    var includeInWorkbook: Bool = true
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        doseFactorID = try container.decodeIfPresent(UUID.self, forKey: .doseFactorID)
+        compoundFactorID = try container.decodeIfPresent(UUID.self, forKey: .compoundFactorID)
+        plateID = try container.decodeIfPresent(UUID.self, forKey: .plateID)
+        wellVolume = try container.decodeIfPresent(Double.self, forKey: .wellVolume) ?? 100
+        addedVolume = try container.decodeIfPresent(Double.self, forKey: .addedVolume) ?? 100
+        overage = try container.decodeIfPresent(Overage.self, forKey: .overage) ?? Overage()
+        stock = try container.decodeIfPresent(StockConcentration.self, forKey: .stock)
+        minimumPipetteVolume = try container.decodeIfPresent(Double.self, forKey: .minimumPipetteVolume) ?? 2
+        diluent = try container.decodeIfPresent(String.self, forKey: .diluent) ?? "medium"
+        includeInWorkbook = try container.decodeIfPresent(Bool.self, forKey: .includeInWorkbook) ?? true
+    }
+
+    /// How many times more concentrated a tube is than the well it goes into.
+    var foldOverWell: Double {
+        guard addedVolume > 0 else { return 1 }
+        return wellVolume / addedVolume
+    }
+}
+
 // MARK: - Layout (the document's value)
 
 struct Layout: Codable, Hashable {
@@ -352,6 +519,10 @@ struct Layout: Codable, Hashable {
     var orientation: PlateOrientation = .automatic
     var snapshots: [LayoutSnapshot] = []
     var notes: String = ""
+    /// The pipetting prep parameters, nil until the prep window is opened and a dose
+    /// factor picked — which is what keeps every document written before it byte-identical
+    /// after a round trip.
+    var prep: PrepSetup?
 
     /// Enough saved states to experiment freely, bounded so a document cannot grow
     /// without limit. The oldest is dropped once this is reached.
@@ -365,7 +536,8 @@ struct Layout: Codable, Hashable {
         wellLabelMode: WellLabelMode = .activeFactor,
         orientation: PlateOrientation = .automatic,
         snapshots: [LayoutSnapshot] = [],
-        notes: String = ""
+        notes: String = "",
+        prep: PrepSetup? = nil
     ) {
         self.formatVersion = formatVersion
         self.factors = factors
@@ -375,6 +547,7 @@ struct Layout: Codable, Hashable {
         self.orientation = orientation
         self.snapshots = snapshots
         self.notes = notes
+        self.prep = prep
     }
 
     /// Written by hand rather than synthesized: Swift's generated decoder ignores
@@ -401,6 +574,7 @@ struct Layout: Codable, Hashable {
             ?? (wasMirrored == true || (oldTurns ?? 0) != 0 ? .turned : .automatic)
         snapshots = try container.decodeIfPresent([LayoutSnapshot].self, forKey: .snapshots) ?? []
         notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
+        prep = try container.decodeIfPresent(PrepSetup.self, forKey: .prep)
 
         // A hand-edited or truncated file can carry a well column that no longer
         // matches its plate; normalise once here so nothing downstream has to care.

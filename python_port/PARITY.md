@@ -1,6 +1,6 @@
 # Feature parity — Mac pLayout ⇄ Python port
 
-Checked against Mac version **1.4** (1.5 in progress); last updated 2026-08-18 with the first 1.5 rows. Port version `1.4.0` (`playout.__version__`).
+Checked against Mac version **1.4** (1.5 in progress); last updated 2026-08-19 with the pipetting prep sheet. Port version `1.4.0` (`playout.__version__`).
 Legend: ✅ ported and tested · 🚧 partial · ⏳ not started · ⛔ deliberately not on Windows.
 "Port keys" use Ctrl/Alt/Shift for ⌘/⌥/⇧; on a Mac running the port, Ctrl-sequences render as ⌘.
 
@@ -33,6 +33,8 @@ Mac `ShortcutsCard`, the README table, the menu item **and this file** in the sa
 | Per-well and per-plate notes; corner mark; status bar; Note column in exports | ⌥⌘N | Ctrl+Alt+N | ✅ | M4 | |
 | Overview block outlines: "Group identical wells" + All factors / one factor picker | | | ⏳ | — | 1.5; runs of identical wells, not bounding boxes; walked in display space |
 | Unit field on every factor, not only numeric ones; clearable | | | ⏳ | — | 1.5; the model field already exists both sides |
+| Pipetting prep sheet: serial/individual dilutions, compound × dose, totals from the well counts | ⌥⌘P | Ctrl+Alt+P | ⏳ | — | 1.5; own window, not a dialog. `Level.stock` and `Layout.prep` are new in the file format — **the port must decode both leniently before it can open a 1.5 file** |
+| Stock concentration on a condition row in the sidebar | | | ⏳ | — | 1.5; only on the prep sheet's compound factor, only when set |
 
 ## Colours
 
@@ -53,6 +55,8 @@ Mac `ShortcutsCard`, the README table, the menu item **and this file** in the sa
 | Tidy CSV export | ⇧⌘E | Ctrl+Shift+E | ✅ | M4 | |
 | Plate image PNG / PDF; print scaled to one page | ⌘P | Ctrl+P | ✅ | M4 | PNG at the on-screen size × DPR, vector PDF |
 | Image export asks whether to include the Overview block outlines | | | ⏳ | — | 1.5; remembered like the workbook options |
+| Prep tab in the Excel workbook | | | ⏳ | — | 1.5; appended after Legend, only when the document has a prep setup |
+| ⌘P prints the prep sheet when its window is frontmost | ⌘P | Ctrl+P | ⏳ | — | 1.5; the menu item retitles to say which it will print |
 
 ## Settings
 

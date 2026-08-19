@@ -165,6 +165,7 @@ touches a document that started from it.
 | arrows | Move the cursor; `⇧`-arrows extend the selection |
 | pinch | Zoom in; `⌘0` fits the whole plate again |
 | `⌥⌘C` / `⌥⌘V` | Copy the selected wells with every factor, and put them down again |
+| `⌥⌘P` | Pipetting prep sheet — the dilutions and volumes for the doses on the plate |
 | `⌘Z` | Undo (every edit is one step) |
 
 Zoom never goes below "whole plate in view" — that is the resting state, and pinching
@@ -343,12 +344,15 @@ cell, the way the workbook's one-cell map does.
   well joined into a single string — `Side+CpG+LN+OVA` — with a separator of
   your choosing (blank means `+`). Handy for tools that want one label per well.
 - **Tidy CSV (`⇧⌘E`)** — just the one-row-per-well table.
+- **Prep tab** — the pipetting plan, in any workbook from a document that has one. Turn it
+  off in the prep window rather than in the save panel, next to the numbers it governs.
 - **Plate image** — PNG or vector PDF of the plate for a lab notebook or figure.
   While Overview is drawing block outlines, the save panel asks whether the figure
   keeps them, and remembers the answer.
 - **Print (`⌘P`)** — the plate exactly as displayed, scaled to fill one page. The
   selection highlight is left out and colours are rendered light, so a dark-mode
-  window still prints as a clean figure.
+  window still prints as a clean figure. With the prep window in front it prints that
+  instead, paginated so no row is cut in half — and the menu item says which it means.
 
 The `.xlsx` writer is built into the app (OOXML + a small ZIP writer), so exports
 work offline with no Python or Excel involved.
@@ -396,6 +400,33 @@ them high-to-low and colours them as a light-to-dark ramp.
 **Randomise** shuffles the assigned values inside the selection, keeping the
 counts, to guard against plate position effects.
 
+## Pipetting prep sheet
+
+**Plate → Pipetting Prep Sheet…** (`⌥⌘P`) turns the doses on the plate into the tubes you
+have to make. It opens in its own window, beside the plate rather than on top of it, and
+follows the layout as you paint.
+
+Tell it three things — which factor carries the doses, which carries the compounds, and
+what each compound's stock is — plus how much goes in a well and how much of that is the
+addition. Everything else it already knows.
+
+| | |
+| --- | --- |
+| **Both volumes** | The volume in the well *after* the addition, and the volume added. Their ratio is what the tubes are: 10 µL into a 100 µL well means 10× working solutions; adding all 100 µL means the tubes are at the final concentration. |
+| **Serial or not** | A constant fold series — what Series Fill writes — is made serially, each tube from the one above. A linear or hand-typed series cannot be, so each tube is made straight from the stock. It says which it did, every time. |
+| **Total volumes** | The part worth having software for: each tube holds enough for its own wells **and** for the transfer that makes the next one, and the well counts come from the plate itself. |
+| **Extra** | A percentage, a percentage with a floor, or a flat number of µL — whichever matches how your bench thinks about dead volume. |
+| **The vehicle** | A dose of `0` becomes a vehicle tube with the solvent matched to the top dose, so the control differs in one thing only. |
+
+It also says what is about to go wrong: a volume under the smallest you said you can
+pipette accurately, a stock too weak for the top tube, doses and stock in units that
+cannot be converted without a molecular weight, and the solvent percentage in the well —
+`dose ÷ stock`, whatever the volumes are.
+
+Stocks are stored in the document, so reopening the experiment remembers them, and a
+compound's stock shows on its condition row in the sidebar. `⌘P` prints the sheet while
+its window is in front, and the Excel workbook gains a **Prep** tab.
+
 ## Imaging positions
 
 **XY Position Fill** (toolbar, Plate menu, or `⇧⌘Y`) numbers wells the way a Keyence
@@ -429,7 +460,7 @@ plate. Autosave, versions and revert come from the standard document machinery.
 Sources/PLayout/
   App.swift              @main scene, menu bar commands
   Model/                 PlateFormat, Layout/Factor/Level/Plate, templates, document
-  Editor/                PlateEditor (all mutations), WellRange, WellGrouping
+  Editor/                PlateEditor (all mutations), WellRange, WellGrouping, DilutionPlan
   Views/                 SwiftUI shell, sidebar, sheets, and the AppKit plate grid
   IO/                    TSV/CSV, ZIP writer, XLSX writer, workbook builder, well clipboard
 Tests/PLayoutTests/      model, clipboard, workbook, painting, rendering, zoom

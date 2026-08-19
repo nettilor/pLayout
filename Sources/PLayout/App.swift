@@ -42,6 +42,8 @@ struct PlateCommands: Commands {
     // Observed so the submenu rebuilds when a template is saved or removed —
     // the same staleness the Factor menu taught (§ HANDOFF 2h).
     @ObservedObject private var layoutTemplates = LayoutTemplateStore.shared
+    // Observed so ⌘P retitles the moment a prep window takes or loses focus.
+    @ObservedObject private var prepWindows = PrepWindowRegistry.shared
 
     var body: some Commands {
         CommandGroup(after: .appInfo) {
@@ -70,9 +72,16 @@ struct PlateCommands: Commands {
         }
 
         CommandGroup(replacing: .printItem) {
-            Button("Print Plate…") { editor?.printPlate() }
-                .keyboardShortcut("p", modifiers: .command)
-                .disabled(editor == nil)
+            // Retargets by whichever of a document's two windows is frontmost, and says
+            // which one it means: a ⌘P whose destination you cannot see reads as a bug
+            // the first time it surprises you. The target comes from the registry rather
+            // than from @FocusedObject because the prep window is a plain NSWindow, not
+            // a SwiftUI scene, and a focused-object miss would grey the item out.
+            Button(prepWindows.keyEditor != nil ? "Print Prep Sheet…" : "Print Plate…") {
+                (prepWindows.keyEditor ?? editor)?.printFrontmost()
+            }
+            .keyboardShortcut("p", modifiers: .command)
+            .disabled(prepWindows.keyEditor == nil && editor == nil)
         }
 
         CommandGroup(after: .importExport) {
@@ -159,6 +168,12 @@ struct PlateCommands: Commands {
                 .keyboardShortcut("d", modifiers: [.command, .shift])
             Button("XY Position Fill…") { editor?.openXYFillSheet() }
                 .keyboardShortcut("y", modifiers: [.command, .shift])
+            // ⌥⌘P, not the ⌥⌘D that would have paired it with Series Fill's ⇧⌘D:
+            // **⌥⌘D is a system shortcut** — macOS toggles the Dock with it and the
+            // event never reaches the app. Verified by driving the real app; the menu
+            // item worked when clicked and the key equivalent did nothing at all.
+            Button("Pipetting Prep Sheet…") { editor?.openPrepWindow() }
+                .keyboardShortcut("p", modifiers: [.command, .option])
             Button("Randomise Selection") { editor?.randomizeSelection() }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
 

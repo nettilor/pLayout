@@ -556,6 +556,105 @@ final class WorkbookTests: XCTestCase {
         XCTAssertEqual(WorkbookScope.remembered, .allPlates, "garbage should fall back")
     }
 
+    // MARK: - The pipetting prep tab
+
+    /// A layout with a dose series and one compound, ready to prep.
+    private func prepLayout() -> Layout {
+        var layout = Layout(plates: [Plate(name: "Plate 1", format: .well96)])
+        var dose = Factor(name: "Dose", kind: .numeric, unit: "µM")
+        for (index, name) in ["10", "3.33", "1.11", "0"].enumerated() {
+            dose.levels.append(Level(name: name, colorHex: Palette.color(at: index)))
+        }
+        var drug = Factor(name: "Drug")
+        drug.levels = [
+            Level(name: "Cpd1", colorHex: Palette.color(at: 5),
+                  stock: StockConcentration(value: 10, unit: "mM")),
+        ]
+        layout.factors = [drug, dose]
+        for (index, level) in dose.levels.enumerated() {
+            for well in (index * 12)..<(index * 12 + 12) {
+                layout.plates[0].setLevelID(level.id, factor: dose.id, well: well)
+                layout.plates[0].setLevelID(drug.levels[0].id, factor: drug.id, well: well)
+            }
+        }
+        var prep = PrepSetup()
+        prep.doseFactorID = dose.id
+        prep.compoundFactorID = drug.id
+        prep.wellVolume = 100
+        prep.addedVolume = 10
+        layout.prep = prep
+        return layout
+    }
+
+    func testThePrepTabAppearsOnlyWhenThereIsASetup() throws {
+        var layout = prepLayout()
+        XCTAssertTrue(try sheetNames(of: Exporter.workbook(from: layout)).contains("Prep"))
+
+        layout.prep = nil
+        XCTAssertFalse(
+            try sheetNames(of: Exporter.workbook(from: layout)).contains("Prep"),
+            "a document that never used the prep sheet exports exactly as before"
+        )
+    }
+
+    func testTurningOffIncludeInWorkbookRemovesTheTab() throws {
+        var layout = prepLayout()
+        layout.prep?.includeInWorkbook = false
+        XCTAssertFalse(try sheetNames(of: Exporter.workbook(from: layout)).contains("Prep"))
+    }
+
+    /// The volumes have to arrive as numbers, or nobody can sum a column of them.
+    func testThePrepTabCarriesVolumesAsNumbers() throws {
+        let data = Exporter.workbook(from: prepLayout())
+        let directory = try unzip(data)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let names = try sheetNames(of: data)
+        let index = try XCTUnwrap(names.firstIndex(of: "Prep"))
+        let xml = try String(
+            contentsOf: directory.appendingPathComponent("xl/worksheets/sheet\(index + 1).xml"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(xml.contains("Cpd1"), "the compound heading is missing")
+        XCTAssertTrue(xml.contains("stock 10 mM"))
+        // 12 wells × 10 µL + 20 % = 144 µL for the bottom tube, and it transfers nothing.
+        XCTAssertTrue(xml.contains("<v>144</v>"), "the bottom tube's total should be a number")
+        XCTAssertNoThrow(try XMLDocument(data: Data(xml.utf8), options: []))
+    }
+
+    /// The save panel's plate scope is one filter at the top; the prep counts follow it.
+    func testThePrepTabFollowsTheSavePanelPlateScope() throws {
+        var layout = prepLayout()
+        var second = layout.plates[0]
+        second.id = UUID()
+        second.name = "Plate 2"
+        layout.plates.append(second)
+
+        func total(_ data: Data) throws -> String {
+            let directory = try unzip(data)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let index = try XCTUnwrap(try sheetNames(of: data).firstIndex(of: "Prep"))
+            return try String(
+                contentsOf: directory.appendingPathComponent("xl/worksheets/sheet\(index + 1).xml"),
+                encoding: .utf8
+            )
+        }
+        // Both plates: 24 wells at the bottom dose, so 288 µL rather than 144.
+        XCTAssertTrue(try total(Exporter.workbook(from: layout)).contains("<v>288</v>"))
+        XCTAssertTrue(
+            try total(Exporter.workbook(from: layout, onlyPlate: layout.plates[0].id))
+                .contains("<v>144</v>"),
+            "one plate's workbook should prep for one plate"
+        )
+    }
+
+    func testAPlateNamedPrepDoesNotCollideWithThePrepTab() throws {
+        var layout = prepLayout()
+        layout.plates[0].name = "Prep"
+        let names = try sheetNames(of: Exporter.workbook(from: layout))
+        XCTAssertEqual(Set(names).count, names.count, "sheet names must stay unique: \(names)")
+        XCTAssertTrue(names.contains("Prep"))
+    }
+
     func testCombinedSheetHeadsEachMapWithItsFactorName() throws {
         let data = Exporter.workbook(from: sampleLayout(), sheetLayout: .allFactorsOneSheet)
         let directory = try unzip(data)

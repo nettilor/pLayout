@@ -24,16 +24,21 @@ struct WellClipboard: Codable, Equatable {
         /// Condition name → colour, so a value this document has never seen arrives
         /// looking the way it did in the one it came from.
         var colors: [String: String]
+        /// Condition name → stock concentration, for the same reason: a compound copied
+        /// into another document should arrive knowing what it is diluted from.
+        var stocks: [String: StockConcentration]
 
         init(
             name: String, unit: String = "", kind: FactorKind = .categorical,
-            values: [String?], colors: [String: String] = [:]
+            values: [String?], colors: [String: String] = [:],
+            stocks: [String: StockConcentration] = [:]
         ) {
             self.name = name
             self.unit = unit
             self.kind = kind
             self.values = values
             self.colors = colors
+            self.stocks = stocks
         }
 
         init(from decoder: Decoder) throws {
@@ -43,6 +48,7 @@ struct WellClipboard: Codable, Equatable {
             kind = try c.decodeIfPresent(FactorKind.self, forKey: .kind) ?? .categorical
             values = try c.decodeIfPresent([String?].self, forKey: .values) ?? []
             colors = try c.decodeIfPresent([String: String].self, forKey: .colors) ?? [:]
+            stocks = try c.decodeIfPresent([String: StockConcentration].self, forKey: .stocks) ?? [:]
         }
     }
 
@@ -83,6 +89,7 @@ struct WellClipboard: Codable, Equatable {
         let columns = factors.map { factor -> Column in
             var values: [String?] = []
             var colors: [String: String] = [:]
+            var stocks: [String: StockConcentration] = [:]
             values.reserveCapacity(range.wellCount)
             for row in range.minRow...range.maxRow {
                 for col in range.minCol...range.maxCol {
@@ -95,11 +102,12 @@ struct WellClipboard: Codable, Equatable {
                     }
                     values.append(level.name)
                     colors[level.name] = level.colorHex
+                    if let stock = level.stock { stocks[level.name] = stock }
                 }
             }
             return Column(
                 name: factor.name, unit: factor.unit, kind: factor.kind,
-                values: values, colors: colors
+                values: values, colors: colors, stocks: stocks
             )
         }
         return WellClipboard(rows: range.rowCount, cols: range.colCount, factors: columns)
@@ -208,6 +216,12 @@ struct WellClipboard: Codable, Equatable {
                             ? colorForNewLevel(named: value, in: layout, factor: fi, column: column)
                             : nil
                     )
+                    // Only for a condition being created here: a stock already set in
+                    // this document is bench reality and a paste does not overrule it.
+                    if existing == nil, let stock = column.stocks[value],
+                       let li = layout.factors[fi].levels.firstIndex(where: { $0.id == levelID }) {
+                        layout.factors[fi].levels[li].stock = stock
+                    }
                     layout.plates[plateIndex].setLevelID(levelID, factor: factorID, well: well)
                 }
             }

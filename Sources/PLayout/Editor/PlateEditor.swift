@@ -34,6 +34,9 @@ final class PlateEditor: ObservableObject {
     @Published var spotlightLevelID: UUID?
     /// Non-nil presents the note sheet for a well or the plate.
     @Published var noteTarget: NoteTarget?
+    /// The prep sheet's window, owned here so it is per-document by construction and
+    /// cannot outlive the document it describes.
+    private(set) var prepWindow: PrepWindowController?
 
     enum NoteTarget: Identifiable, Equatable {
         case well(Int)
@@ -115,6 +118,12 @@ final class PlateEditor: ObservableObject {
                 self.refreshSavedStateMatch(in: self.layout, plate: id)
             }
             .store(in: &cancellables)
+    }
+
+    deinit {
+        // The controller holds the editor unowned, so a window still on screen when the
+        // document goes would be pointing at nothing.
+        prepWindow?.close()
     }
 
     // MARK: - Derived state
@@ -988,6 +997,69 @@ final class PlateEditor: ObservableObject {
         PlateTemplateStore.shared.detailedName(for: format)
     }
 
+    // MARK: - Pipetting prep
+
+    /// The plan as it stands, or nil until a dose factor has been chosen. Recomputed on
+    /// demand rather than cached: it is a pure function of the layout, and the window
+    /// redraws off `objectWillChange` like everything else.
+    var prepPlan: DilutionPlan? { DilutionPlan.make(from: layout, setup: effectivePrepSetup) }
+
+    /// What the prep window is showing: the document's own setup once there is one, and
+    /// a sensible default before that. Opening the window is not an edit.
+    var effectivePrepSetup: PrepSetup { layout.prep ?? defaultPrepSetup() }
+
+    /// Whether a condition row should carry its stock. Only on the factor the prep sheet
+    /// is actually using for compounds, and only when a stock is set — a placeholder on
+    /// every condition of every document, for a feature most never touch, is exactly the
+    /// clutter to avoid.
+    func showsStock(on level: Level) -> Bool {
+        guard level.stock?.isUsable == true, let compound = layout.prep?.compoundFactorID
+        else { return false }
+        return activeFactorID == compound
+    }
+
+    /// What the prep sheet starts from when a document has never had one: the first
+    /// numeric factor, which after a Series Fill is the dose. The compound factor is
+    /// left unset — guessing which factor is the drug would be wrong as often as right,
+    /// and the picker is the first thing in the window.
+    func defaultPrepSetup() -> PrepSetup {
+        var setup = PrepSetup()
+        setup.doseFactorID = layout.factors.first { $0.kind == .numeric }?.id
+            ?? layout.factors.first?.id
+        return setup
+    }
+
+    /// Opens the prep window, or brings it to the front if it is already up. No Overview
+    /// guard, unlike every other sheet opener in this file: reading a prep plan with
+    /// nothing armed is exactly what Overview is for.
+    func openPrepWindow() {
+        let controller = prepWindow ?? PrepWindowController(editor: self, title: suggestedBaseName)
+        prepWindow = controller
+        controller.showWindow(nil)
+        controller.window?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Every prep edit funnels through here, so each one is an ordinary undo step.
+    func updatePrep(_ actionName: String = "Prep Settings", _ change: (inout PrepSetup) -> Void) {
+        let seed = layout.prep ?? defaultPrepSetup()
+        edit(actionName) { layout in
+            var setup = layout.prep ?? seed
+            change(&setup)
+            layout.prep = setup
+        }
+    }
+
+    /// The stock lives on the compound's condition, so this is a level edit like any
+    /// other. A nil or unusable value clears it rather than storing a zero.
+    func setStock(_ stock: StockConcentration?, for levelID: UUID, in factorID: UUID) {
+        edit("Stock Concentration") { layout in
+            guard let fi = layout.factorIndex(id: factorID),
+                  let li = layout.factors[fi].levels.firstIndex(where: { $0.id == levelID })
+            else { return }
+            layout.factors[fi].levels[li].stock = (stock?.isUsable == true) ? stock : nil
+        }
+    }
+
     // MARK: - Clipboard
 
     /// Copies the selection as tab-separated text — pastes straight into Excel.
@@ -1440,12 +1512,23 @@ final class PlateEditor: ObservableObject {
 
     // MARK: - Import / export
 
-    private var suggestedBaseName: String {
+    var suggestedBaseName: String {
         let title = NSApp.keyWindow?.title ?? ""
         let cleaned = title.replacingOccurrences(of: " — Edited", with: "")
             .replacingOccurrences(of: ".plate", with: "")
             .trimmingCharacters(in: .whitespaces)
         return cleaned.isEmpty || cleaned == "Untitled" ? "Plate Layout" : cleaned
+    }
+
+    /// ⌘P prints whichever of this document's two views is frontmost. The routing is a
+    /// new method rather than a change to `printPlate`, so the plate path is provably
+    /// untouched.
+    func printFrontmost() {
+        if prepWindow?.window?.isKeyWindow == true, let plan = prepPlan {
+            PrepTableView.print(plan: plan, jobName: "\(suggestedBaseName) — prep")
+        } else {
+            printPlate()
+        }
     }
 
     private func save(

@@ -236,6 +236,18 @@ struct Sidebar: View {
                 ),
                 onCommit: { editor.renameLevel(level.id, to: $0) }
             )
+            if editor.showsStock(on: level), let stock = level.stock {
+                Text(stock.label)
+                    .font(.caption2)
+                    .monospacedDigit()
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    // `fixedSize`, not a low layout priority: the name beside it is a
+                    // `maxWidth: .infinity` field, which starves anything of lower
+                    // priority to zero width — the chip simply never appeared. The name
+                    // already truncates, so it is the one that gives way.
+                    .fixedSize()
+            }
             Text(count == 0 ? "—" : "\(count)")
                 .font(.caption)
                 .monospacedDigit()
@@ -283,6 +295,10 @@ struct Sidebar: View {
                     editor.armLevel(level.id)
                     editor.paintSelection()
                 }
+                // A menu item rather than a click on the chip: a second gesture on a
+                // sidebar row stalls every click for the double-click interval and
+                // breaks drag-to-reorder (see RowReorder).
+                Button("Stock Concentration…") { editor.openPrepWindow() }
                 Divider()
                 Button("Delete Condition", role: .destructive) { editor.deleteLevel(level.id) }
             }

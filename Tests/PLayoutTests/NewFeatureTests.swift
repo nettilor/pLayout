@@ -69,6 +69,69 @@ final class LayoutCompatibilityTests: XCTestCase {
         XCTAssertEqual(layout.factors.count, 1)
         XCTAssertEqual(layout.plates.first?.format, .well96)
         XCTAssertEqual(layout.wellLabelMode, .activeFactor, "missing field should fall back to the default")
+        XCTAssertNil(layout.prep, "a document written before the prep sheet has no setup")
+        XCTAssertNil(layout.factors[0].levels[0].stock, "nor a stock on any condition")
+    }
+
+    /// The prep fields are Optional so that a document that never used them encodes
+    /// exactly as it did before — a colleague on an older build must still be able to
+    /// open it, and a round trip must not start rewriting everyone's files.
+    func testADocumentWithNoPrepEncodesExactlyAsBefore() throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let json = try XCTUnwrap(String(data: try encoder.encode(Layout.starter()), encoding: .utf8))
+        XCTAssertFalse(json.contains("\"prep\""), json)
+        XCTAssertFalse(json.contains("\"stock\""), json)
+    }
+
+    func testAStockAndAPrepSetupRoundTrip() throws {
+        var layout = Layout.starter()
+        layout.factors[0].levels[0].stock = StockConcentration(value: 10, unit: "mM")
+        var prep = PrepSetup()
+        prep.doseFactorID = layout.factors[0].id
+        prep.wellVolume = 200
+        prep.addedVolume = 20
+        prep.overage = Overage(mode: .percentWithMinimum, percent: 15, minimumExtra: 40)
+        prep.diluent = "PBS"
+        layout.prep = prep
+
+        let data = try JSONEncoder().encode(layout)
+        let decoded = try JSONDecoder().decode(Layout.self, from: data)
+        XCTAssertEqual(decoded, layout)
+        XCTAssertEqual(decoded.factors[0].levels[0].stock?.value, 10)
+        XCTAssertEqual(decoded.prep?.overage.mode, .percentWithMinimum)
+        XCTAssertEqual(decoded.prep?.foldOverWell, 10)
+    }
+
+    /// A half-written setup from a newer build, or a hand-edited file, falls back to the
+    /// defaults rather than refusing to open.
+    func testAPartialPrepSetupTakesTheDefaults() throws {
+        let json = """
+        { "formatVersion": 1, "factors": [], "plates": [], "padWellLabels": false,
+          "notes": "", "prep": { "wellVolume": 50, "overage": { "mode": "fixed" } } }
+        """
+        let layout = try JSONDecoder().decode(Layout.self, from: Data(json.utf8))
+        let prep = try XCTUnwrap(layout.prep)
+        XCTAssertEqual(prep.wellVolume, 50)
+        XCTAssertEqual(prep.addedVolume, 100, "missing field takes its default")
+        XCTAssertEqual(prep.overage.mode, .fixed)
+        XCTAssertEqual(prep.overage.fixedExtra, 50)
+        XCTAssertEqual(prep.diluent, "medium")
+    }
+
+    /// The stock lives on the condition precisely so it cannot outlive it — a side table
+    /// would need a matching prune in three different places.
+    func testDeletingAConditionTakesItsStockWithIt() throws {
+        var layout = Layout.starter()
+        let factorID = layout.factors[0].id
+        let levelID = layout.factors[0].levels[0].id
+        layout.factors[0].levels[0].stock = StockConcentration(value: 10, unit: "mM")
+
+        layout.removeLevel(levelID, from: factorID)
+        XCTAssertFalse(
+            layout.factors[0].levels.contains { $0.stock != nil },
+            "no stock should survive the condition it belonged to"
+        )
     }
 
     /// A file written by a newer build must not break this one.
