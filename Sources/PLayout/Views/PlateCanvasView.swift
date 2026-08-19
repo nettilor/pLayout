@@ -237,9 +237,41 @@ struct PlateGeometry {
 
 // MARK: - Canvas
 
+/// What a canvas view is for.
+///
+/// `.primary` is the document's editing surface — the one canvas in plate mode, and the
+/// only one that may claim `editor.canvas`. `.card` is a view of one plate on the board.
+enum CanvasRole: Equatable {
+    case primary
+    case card(plateID: UUID)
+}
+
 final class PlateCanvasView: NSView, NSUserInterfaceValidations {
 
     weak var editor: PlateEditor?
+
+    private(set) var role: CanvasRole = .primary
+
+    /// The board's magnification, pushed in as a **drawing hint** — never as geometry.
+    /// Below about 0.6 the hairlines and the well text are mush and are better left out.
+    /// `PlateGeometry` still knows nothing about any of this.
+    var displayScale: CGFloat = 1 {
+        didSet { if displayScale != oldValue { needsDisplay = true } }
+    }
+
+    /// The plate this view draws. `.primary` follows the active plate exactly as before.
+    private var shownPlate: Plate? {
+        guard let editor else { return nil }
+        guard case .card(let id) = role else { return editor.plate }
+        return editor.layout.plates.first { $0.id == id }
+    }
+
+    /// True when what this view shows is also what the document is editing. Derived, not
+    /// stored: a stored flag could disagree with `activePlateID`, and this cannot.
+    var isEditable: Bool {
+        guard case .card(let id) = role else { return true }
+        return editor?.activePlateID == id
+    }
 
     private enum DragKind { case none, wells, columns, rows }
     private var dragKind: DragKind = .none
@@ -269,20 +301,63 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     private var cancellable: AnyCancellable?
 
     override var isFlipped: Bool { true }
-    override var acceptsFirstResponder: Bool { true }
+    /// A read-only card must not take the keyboard, or the arrows, `1`–`9` and `⌫` would
+    /// go to a plate nobody is editing.
+    override var acceptsFirstResponder: Bool { isEditable }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    func attach(editor: PlateEditor) {
+    func attach(editor: PlateEditor, role: CanvasRole = .primary) {
         self.editor = editor
-        editor.canvas = self
-        // Hopped through the main queue rather than the main *run loop*: run-loop
-        // delivery is scheduled in the default mode only, so while the mouse is down
-        // — exactly when a sidebar click happens — the redraw would wait for tracking
-        // to finish. The hop itself is still needed because objectWillChange fires
-        // before the value changes.
-        cancellable = editor.objectWillChange
+        self.role = role
+        // Only the editing surface claims that slot. It is what export, print and
+        // `focusCanvas()` resolve through, and a card is whatever size it was dragged
+        // to — claiming it from a card would silently make an exported PNG card-sized.
+        if case .primary = role { editor.canvas = self }
+        subscribe(to: editor, role: role)
+    }
+
+    /// What makes this view redraw.
+    ///
+    /// A card takes a narrower set than the primary canvas. `editor.objectWillChange`
+    /// fires for `hovered` too, so subscribing a board of four dense plates to it would
+    /// redraw every one of them on every mouse move.
+    ///
+    /// Hopped through the main queue rather than the main *run loop*: run-loop delivery
+    /// is scheduled in the default mode only, so while the mouse is down — exactly when
+    /// a sidebar click happens — the redraw would wait for tracking to finish. The hop
+    /// itself is still needed because objectWillChange fires before the value changes.
+    private func subscribe(to editor: PlateEditor, role: CanvasRole) {
+        let trigger: AnyPublisher<Void, Never>
+        if case .card = role {
+            trigger = Publishers.MergeMany([
+                editor.document.$layout.map { _ in () }.eraseToAnyPublisher(),
+                Preferences.shared.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
+                editor.$activePlateID.map { _ in () }.eraseToAnyPublisher(),
+                editor.$activeFactorID.map { _ in () }.eraseToAnyPublisher(),
+                editor.$armedLevelID.map { _ in () }.eraseToAnyPublisher(),
+                editor.$selection.map { _ in () }.eraseToAnyPublisher(),
+                editor.$customWells.map { _ in () }.eraseToAnyPublisher(),
+                editor.$spotlightLevelID.map { _ in () }.eraseToAnyPublisher(),
+                editor.$roundWells.map { _ in () }.eraseToAnyPublisher(),
+                editor.$showSecondaryFactors.map { _ in () }.eraseToAnyPublisher(),
+                editor.$showOverviewGroups.map { _ in () }.eraseToAnyPublisher(),
+                editor.$overviewGroupFactorID.map { _ in () }.eraseToAnyPublisher(),
+            ]).eraseToAnyPublisher()
+        } else {
+            trigger = editor.objectWillChange.map { _ in () }.eraseToAnyPublisher()
+        }
+        cancellable = trigger
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.needsDisplay = true }
+            .sink { [weak self] in self?.needsDisplay = true }
+    }
+
+    /// A detached canvas at a stated size, for exporting and printing without depending
+    /// on how big the window — or a card — happens to be. Same shape as
+    /// `PrepTableView.print(plan:jobName:)`, and for the same reason.
+    static func offscreen(editor: PlateEditor, size: NSSize) -> PlateCanvasView {
+        let view = PlateCanvasView(frame: NSRect(origin: .zero, size: size))
+        view.editor = editor
+        return view
     }
 
     override func viewDidMoveToWindow() {
@@ -290,7 +365,8 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         guard let window else { return }
         if editor?.undoManager == nil { editor?.undoManager = window.undoManager }
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.window?.firstResponder is NSWindow || self.window?.firstResponder == nil else { return }
+            guard let self, self.isEditable else { return }
+            guard self.window?.firstResponder is NSWindow || self.window?.firstResponder == nil else { return }
             self.window?.makeFirstResponder(self)
         }
     }
@@ -308,9 +384,13 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     }
 
     private var geometry: PlateGeometry {
-        PlateGeometry(
-            format: editor?.format ?? .well96, bounds: bounds,
-            quarterTurns: editor?.quarterTurns ?? 0
+        // Resolved from the plate this view actually shows. Orientation is document-wide
+        // but is resolved *against a format*, so a card of a differently shaped plate has
+        // to work its own turn out — `editor.quarterTurns` is the active plate's.
+        let format = shownPlate?.format ?? .well96
+        return PlateGeometry(
+            format: format, bounds: bounds,
+            quarterTurns: editor?.layout.orientation.quarterTurns(for: format) ?? 0
         )
     }
 
@@ -326,7 +406,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     }
 
     private func render() {
-        guard let editor, let plate = editor.plate else { return }
+        guard let editor, let plate = shownPlate else { return }
         let geo = geometry
         let format = plate.format
         let mode = editor.layout.wellLabelMode
@@ -506,7 +586,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         // A noted well carries the spreadsheet's comment mark: a small corner
         // triangle, screen only — figures stay clean, the notes travel in the
         // Wells sheet instead.
-        if let plate = editor.plate, !plate.wellNotes.isEmpty {
+        if !plate.wellNotes.isEmpty {
             NSColor.labelColor.withAlphaComponent(0.45).setFill()
             for key in plate.wellNotes.keys {
                 guard let well = Int(key), well >= 0, well < format.wellCount else { continue }
@@ -524,8 +604,10 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         // Spotlight: hovering a condition row in the sidebar dims every well that is
         // not that condition, so a dense plate answers "where is this?" by itself.
         // Transient view state, drawn past the export guard on purpose.
-        if let spotlight = editor.spotlightLevelID, let factorID = editor.activeFactorID,
-           let plate = editor.plate {
+        // Live on every card, deliberately: it reads document state rather than which
+        // plate is being edited, and "hover a condition, see where it is across every
+        // plate at once" is the board's best moment.
+        if let spotlight = editor.spotlightLevelID, let factorID = editor.activeFactorID {
             NSColor.textBackgroundColor.withAlphaComponent(0.8).setFill()
             for row in 0..<format.rows {
                 for col in 0..<format.cols {
@@ -535,6 +617,11 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
                 }
             }
         }
+
+        // The selection, the focus ring and the hover ring all belong to the plate being
+        // edited. A card showing another plate must not draw them at the same row and
+        // column, which would look exactly like a real selection.
+        guard isEditable else { return }
 
         let accent = NSColor.controlAccentColor
         if let customSelection {
@@ -1152,7 +1239,14 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     // MARK: - Mouse
 
     override func mouseDown(with event: NSEvent) {
-        guard let editor, editor.plate != nil else { return }
+        guard let editor, shownPlate != nil else { return }
+        // A click on a read-only card means "edit that one instead" and nothing else.
+        // Not also a select, and certainly not a paint: an armed brush plus a card click
+        // is how a whole plate would get overwritten by one stray press.
+        guard isEditable else {
+            if case .card(let id) = role { editor.activatePlate(id) }
+            return
+        }
         window?.makeFirstResponder(self)
 
         let geo = geometry
@@ -1221,6 +1315,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        guard isEditable else { return }
         guard dragKind != .none, let editor else { return }
         let geo = geometry
         let point = convert(event.locationInWindow, from: nil)
@@ -1261,6 +1356,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     }
 
     override func mouseUp(with event: NSEvent) {
+        guard isEditable else { return }
         defer {
             dragKind = .none
             isPaintingDrag = false
@@ -1289,7 +1385,10 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     }
 
     override func mouseMoved(with event: NSEvent) {
-        guard let editor else { return }
+        // Only the plate being edited owns the hover. Without this, moving the mouse over
+        // a read-only card would draw a hover ring on the *active* plate at the same row
+        // and column — a plausible-looking well, which is the worst kind of wrong.
+        guard let editor, isEditable else { return }
         let geo = geometry
         let point = convert(event.locationInWindow, from: nil)
         let hit = geo.hit(point)
@@ -1304,6 +1403,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     }
 
     override func mouseExited(with event: NSEvent) {
+        guard isEditable else { return }
         if editor?.hovered != nil || hoveringCorner {
             editor?.hovered = nil
             hoveringCorner = false
@@ -1314,7 +1414,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     // MARK: - Keyboard
 
     override func keyDown(with event: NSEvent) {
-        guard let editor else { return super.keyDown(with: event) }
+        guard let editor, isEditable else { return super.keyDown(with: event) }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         guard !modifiers.contains(.command) else { return super.keyDown(with: event) }
         let shift = modifiers.contains(.shift)
@@ -1363,7 +1463,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     /// Views get first crack at key equivalents, so guard on focus to leave
     /// ⌘C/⌘V alone while a sidebar text field is being edited.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        guard window?.firstResponder === self, let editor else {
+        guard window?.firstResponder === self, let editor, isEditable else {
             return super.performKeyEquivalent(with: event)
         }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -1558,4 +1658,15 @@ final class PlateScrollView: NSScrollView, PlateZoomController {
 
 protocol PlateZoomController: AnyObject {
     func setZoom(_ value: CGFloat)
+    /// The zoom that shows everything there is. The plate is pinned to its viewport, so
+    /// for it "everything" is magnification 1; the board has to measure its cards.
+    func fitContent()
+    /// Below this, zooming out does nothing — which is how the status bar knows whether
+    /// to keep offering it.
+    var minimumZoom: CGFloat { get }
+}
+
+extension PlateZoomController {
+    func fitContent() { setZoom(1) }
+    var minimumZoom: CGFloat { 1 }
 }

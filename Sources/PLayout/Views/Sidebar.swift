@@ -81,7 +81,7 @@ struct Sidebar: View {
                         editingFactorID = factor.id
                     } else {
                         editingFactorID = nil
-                        editor.focusCanvas()
+                        editor.focusCanvasSurface()
                     }
                 }
                 .listRowBackground(
@@ -276,7 +276,7 @@ struct Sidebar: View {
                 editingLevelID = level.id
             } else {
                 editingLevelID = nil
-                editor.focusCanvas()
+                editor.focusCanvasSurface()
             }
         }
         .listRowBackground(

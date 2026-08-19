@@ -41,10 +41,15 @@ final class PlateEditor: ObservableObject {
     enum NoteTarget: Identifiable, Equatable {
         case well(Int)
         case plate
+        /// A note on the board. Routed through the same sheet as the other two, which is
+        /// what keeps sticky notes from needing any text-editing machinery of their own —
+        /// and an `NSTextView` inside a magnified board would render soft anyway.
+        case canvasNote(UUID)
         var id: String {
             switch self {
             case .well(let well): return "well-\(well)"
             case .plate: return "plate"
+            case .canvasNote(let id): return "note-\(id.uuidString)"
             }
         }
     }
@@ -208,6 +213,8 @@ final class PlateEditor: ObservableObject {
             return "Note for \(label)"
         case .plate:
             return "Note for \(plate?.name ?? "this plate")"
+        case .canvasNote:
+            return "Note on the board"
         }
     }
 
@@ -215,6 +222,7 @@ final class PlateEditor: ObservableObject {
         switch target {
         case .well(let well): return plate?.note(well: well) ?? ""
         case .plate: return plate?.note ?? ""
+        case .canvasNote(let id): return layout.canvas?[id]?.text ?? ""
         }
     }
 
@@ -228,6 +236,14 @@ final class PlateEditor: ObservableObject {
             editPlate("Edit Plate Note") {
                 $0.note = text.trimmingCharacters(in: .whitespacesAndNewlines)
             }
+        case .canvasNote(let id):
+            let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            // An emptied sticky note is a removed one, exactly as an emptied well note is.
+            guard !clean.isEmpty else { return deleteCanvasItem(id) }
+            var items = canvasItems
+            guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+            items[index].text = clean
+            edit("Edit Note") { layout in layout.canvas = CanvasLayout(items: items) }
         }
     }
 
@@ -247,6 +263,17 @@ final class PlateEditor: ObservableObject {
     }
 
     /// Sidebar clicks move focus off the grid; hand it back so number keys keep working.
+    /// Hands the keyboard back to whatever the plate is being edited in — the canvas in
+    /// plate mode, the active card on the board. Without the board case, clicking a
+    /// sidebar row would leave focus nowhere and the number keys would stop arming.
+    func focusCanvasSurface() {
+        if showsCanvas, let card = board?.activeCardView {
+            card.window?.makeFirstResponder(card)
+            return
+        }
+        focusCanvas()
+    }
+
     func focusCanvas() {
         guard let canvas else { return }
         canvas.window?.makeFirstResponder(canvas)
@@ -997,6 +1024,85 @@ final class PlateEditor: ObservableObject {
         PlateTemplateStore.shared.detailedName(for: format)
     }
 
+    // MARK: - The board
+
+    /// Per window, never saved. The arrangement travels with the document; which way you
+    /// happen to be looking at it does not, and a `.plate` a colleague opens must not
+    /// surprise them with a mode they never asked for. Overview is in the document
+    /// because it is exported; the board changes no export at all.
+    @Published var showsCanvas = false
+    /// The board, while one is on screen. Weak, and only ever read to resolve focus and
+    /// to bring a card into view.
+    weak var board: CanvasBoardView?
+
+    /// The board as it should be shown — saved cards where they were left, everything
+    /// else placed around them. Computed, never written: the app autosaves in place, so
+    /// writing placements on entry would mean looking at a layout rewrote its file.
+    var canvasItems: [CanvasItem] {
+        // `layout.prep`, not `prepPlan`: the latter falls back to a default setup so the
+        // prep window can show a table the moment it opens, which would put a prep card
+        // on the board of every document that has never used the feature. Same opt-in
+        // rule as the workbook's Prep tab.
+        let hasPrep = layout.prep != nil && prepPlan?.isEmpty == false
+        return CanvasArrangement.resolved(
+            saved: layout.canvas, plates: layout.plates,
+            orientation: layout.orientation, includesPrep: hasPrep
+        )
+    }
+
+    func toggleCanvas() {
+        showsCanvas.toggle()
+    }
+
+    /// Commits a card's place. Called once, on mouse up, so a drag is one ⌘Z.
+    ///
+    /// It writes **every** card, not just the moved one: the first deliberate move
+    /// freezes the arrangement exactly as it looks, so the auto-placed cards around it
+    /// cannot shuffle when the board next resolves.
+    func setCanvasFrame(_ id: UUID, to frame: CGRect, actionName: String = "Move Card") {
+        var items = canvasItems
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        items[index].frame = CanvasFrame(frame)
+        edit(actionName) { layout in layout.canvas = CanvasLayout(items: items) }
+    }
+
+    /// Array order is z-order, so raising a card is moving it to the end.
+    func bringCanvasItemToFront(_ id: UUID) {
+        var items = canvasItems
+        guard let index = items.firstIndex(where: { $0.id == id }), index != items.count - 1
+        else { return }
+        let item = items.remove(at: index)
+        items.append(item)
+        edit("Bring to Front") { layout in layout.canvas = CanvasLayout(items: items) }
+    }
+
+    func addCanvasNote(at point: CGPoint) {
+        var items = canvasItems
+        let frame = CGRect(origin: point, size: CanvasArrangement.noteSize)
+        let note = CanvasItem(kind: .note, frame: CanvasFrame(frame))
+        items.append(note)
+        edit("Add Note") { layout in layout.canvas = CanvasLayout(items: items) }
+        noteTarget = .canvasNote(note.id)
+    }
+
+    /// Only notes can be removed — a plate's card is the plate, and hiding one would be a
+    /// way to lose a plate without deleting it.
+    func deleteCanvasItem(_ id: UUID) {
+        var items = canvasItems
+        guard let index = items.firstIndex(where: { $0.id == id }), items[index].kind == .note
+        else { return }
+        items.remove(at: index)
+        edit("Delete Note") { layout in layout.canvas = CanvasLayout(items: items) }
+    }
+
+    /// Clicking a card is how a plate becomes the editable one. Deliberately does not
+    /// touch the selection: unlike a plate tab, a card click is often just "look at that
+    /// one", and `reconcileTargets` already clamps the selection to the new format.
+    func activatePlate(_ id: UUID) {
+        guard activePlateID != id, layout.plates.contains(where: { $0.id == id }) else { return }
+        activePlateID = id
+    }
+
     // MARK: - Pipetting prep
 
     /// The plan as it stands, or nil until a dose factor has been chosen. Recomputed on
@@ -1586,7 +1692,7 @@ final class PlateEditor: ObservableObject {
     func exportPNG() {
         let options = imageExportAccessory()
         save(
-            data: self.canvas?.pngData(includingGroupOutlines: self.exportGroups(options)),
+            data: self.rendering { $0.pngData(includingGroupOutlines: self.exportGroups(options)) },
             name: suggestedBaseName, ext: "png", accessory: options
         )
     }
@@ -1594,9 +1700,30 @@ final class PlateEditor: ObservableObject {
     func exportPDF() {
         let options = imageExportAccessory()
         save(
-            data: self.canvas?.pdfData(includingGroupOutlines: self.exportGroups(options)),
+            data: self.rendering { $0.pdfData(includingGroupOutlines: self.exportGroups(options)) },
             name: suggestedBaseName, ext: "pdf", accessory: options
         )
+    }
+
+    /// Runs a render against the right canvas.
+    ///
+    /// In plate mode that is the editing surface, exactly as before. On the board there
+    /// is no full-size canvas — only cards, whose size is whatever they were dragged to —
+    /// so it renders a detached one at a stated size instead. Same move as
+    /// `PrepTableView.print`, and it quietly fixes the older wart that an exported PNG's
+    /// resolution depended on how wide the window happened to be.
+    private func rendering<T>(_ body: (PlateCanvasView) -> T?) -> T? {
+        if !showsCanvas, let canvas { return body(canvas) }
+        guard plate != nil else { return nil }
+        let size = NSSize(width: 1180, height: 820)
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless],
+            backing: .buffered, defer: false
+        )
+        let view = PlateCanvasView.offscreen(editor: self, size: size)
+        window.contentView = view
+        view.layoutSubtreeIfNeeded()
+        return withExtendedLifetime(window) { body(view) }
     }
 
     /// Only offered when the plate is actually drawing block outlines — otherwise the
@@ -1616,22 +1743,38 @@ final class PlateEditor: ObservableObject {
     /// Prints the plate exactly as it is currently shown — active factor, label mode
     /// and colours all included — scaled to fill one page.
     func printPlate() {
-        guard let canvas else { return }
-        canvas.printPlate(jobName: suggestedBaseName)
+        _ = rendering { canvas -> Bool? in
+            canvas.printPlate(jobName: suggestedBaseName)
+            return true
+        }
     }
 
     // MARK: - Zoom
 
-    var canZoomOut: Bool { zoomLevel > 1.001 }
+    /// The floor the current surface imposes: 1 for the plate, well below it for the
+    /// board. Published so the status bar can tell "already fitted" from "zoomed out".
+    @Published private(set) var minimumZoomLevel: CGFloat = 1
+
+    var canZoomOut: Bool { zoomLevel > minimumZoomLevel * 1.001 }
+
+    /// Whether the status bar shows its zoom readout at all. On the board, fit-all is
+    /// usually below 1, so `canZoomOut` alone would hide the readout exactly when it is
+    /// most wanted.
+    var showsZoomReadout: Bool { canZoomOut || abs(zoomLevel - 1) > 0.001 }
 
     func zoomIn() { zoomController?.setZoom(zoomLevel * 1.4) }
     func zoomOut() { zoomController?.setZoom(zoomLevel / 1.4) }
 
-    /// Back to "whole plate in view", which is the minimum zoom.
-    func zoomToFit() { zoomController?.setZoom(1) }
+    /// Everything in view. On the plate that is magnification 1; on the board it is
+    /// whatever fits every card, which only the board can work out.
+    func zoomToFit() { zoomController?.fitContent() }
 
     /// Pushed in by the scroll view; `magnification` is not observable on its own.
     func noteZoomChanged(_ value: CGFloat) {
+        // Before the early return: a pinch that lands on the same number still has to be
+        // able to tell us the surface underneath changed.
+        let floor = zoomController?.minimumZoom ?? 1
+        if abs(floor - minimumZoomLevel) > 0.0001 { minimumZoomLevel = floor }
         guard abs(value - zoomLevel) > 0.001 else { return }
         zoomLevel = value
     }

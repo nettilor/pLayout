@@ -129,6 +129,19 @@ struct PlateCommands: Commands {
                 }
             }
             .keyboardShortcut("o", modifiers: [.command, .shift])
+            // The third "how you are looking at the design" toggle, beside Overview and
+            // Turn Plate. ⇧⌘K rather than anything with ⌥: ⌥⌘D is a system shortcut and
+            // never arrives, which is the kind of thing only the running app tells you.
+            Button {
+                editor?.toggleCanvas()
+            } label: {
+                if editor?.showsCanvas == true {
+                    Label("Canvas", systemImage: "checkmark")
+                } else {
+                    Text("Canvas")
+                }
+            }
+            .keyboardShortcut("k", modifiers: [.command, .shift])
             Button {
                 editor?.rotatePlate()
             } label: {

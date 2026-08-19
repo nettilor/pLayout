@@ -166,6 +166,7 @@ touches a document that started from it.
 | pinch | Zoom in; `⌘0` fits the whole plate again |
 | `⌥⌘C` / `⌥⌘V` | Copy the selected wells with every factor, and put them down again |
 | `⌥⌘P` | Pipetting prep sheet — the dilutions and volumes for the doses on the plate |
+| `⇧⌘K` | Canvas — every plate, the prep table and your notes on one board |
 | `⌘Z` | Undo (every edit is one step) |
 
 Zoom never goes below "whole plate in view" — that is the resting state, and pinching
@@ -400,6 +401,26 @@ them high-to-low and colours them as a light-to-dark ramp.
 **Randomise** shuffles the assigned values inside the selection, keeping the
 counts, to guard against plate position effects.
 
+## Canvas
+
+**View → Canvas** (`⇧⌘K`) turns the plate area into a board: every plate in the document
+side by side, the pipetting prep table beside them, and sticky notes wherever you want
+them. Pan by scrolling, pinch to zoom, `⌘0` to fit everything.
+
+The plate you are editing is a full working plate, not a picture of one — paint it,
+select on it, use the keyboard, exactly as you would on its own. The others are live
+(they redraw as the document changes) but read-only; **click one and it becomes the
+editable one**, which the plate tabs and the accent-coloured card border both show.
+
+Drag a card by its title bar, resize it from the corner. The first card you move fixes
+the whole arrangement where it is, so nothing shuffles underneath you, and where you put
+things is saved in the document and travels with it. Double-click empty board to drop a
+note; double-click a note to write in it, and empty it to throw it away.
+
+Nothing about the board changes what a plate *is*: it is not exported, not printed, and
+not saved as a mode — a `.plate` always opens as a plate, and the board is one keystroke
+away when you want it.
+
 ## Pipetting prep sheet
 
 **Plate → Pipetting Prep Sheet…** (`⌥⌘P`) turns the doses on the plate into the tubes you
@@ -460,7 +481,8 @@ plate. Autosave, versions and revert come from the standard document machinery.
 Sources/PLayout/
   App.swift              @main scene, menu bar commands
   Model/                 PlateFormat, Layout/Factor/Level/Plate, templates, document
-  Editor/                PlateEditor (all mutations), WellRange, WellGrouping, DilutionPlan
+  Editor/                PlateEditor (all mutations), WellRange, WellGrouping, DilutionPlan,
+                         CanvasArrangement
   Views/                 SwiftUI shell, sidebar, sheets, and the AppKit plate grid
   IO/                    TSV/CSV, ZIP writer, XLSX writer, workbook builder, well clipboard
 Tests/PLayoutTests/      model, clipboard, workbook, painting, rendering, zoom
@@ -476,6 +498,18 @@ Two invariants are worth knowing before changing the drawing code:
 - **Label sizes are continuous functions of the cell size.** Any step — even
   rounding — can make the number of label lines drop as the window grows, which
   reads as labels randomly disappearing. `LabelPlanTests` pins this down.
+- **A card on the canvas is a real `PlateCanvasView`, pinned to one plate.** That is what
+  keeps the board honest: AppKit converts a click through the board's pan and
+  magnification before the card ever sees it, so `PlateGeometry` works in the card's own
+  bounds and never learns a board exists. Only the card for the active plate is editable,
+  and only it draws the selection, the hover and the focus ring — a read-only card that
+  drew them would be showing another plate's state at a plausible-looking well.
+  `CanvasBoardTests` clicks through the board at three magnifications and two scroll
+  offsets and checks the well that gets painted.
+- **Fill your own bounds, not the dirty rect.** AppKit hands a subview a dirty rect
+  covering the whole damaged region, which on the board is the entire viewport — a view
+  that fills it paints over every sibling and its parent. `PrepTableView` did exactly
+  that, and the board came up blank while every card still hit-tested perfectly.
 - **The Overview block outlines are walked in display space.** The runs themselves are
   found in model space, where a rotation cannot change which wells are adjacent, but
   the edges are emitted per *display* cell so a turned plate needs no second opinion

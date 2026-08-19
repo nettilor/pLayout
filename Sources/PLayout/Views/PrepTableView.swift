@@ -221,7 +221,10 @@ final class PrepTableView: NSView {
 
     private func render(_ dirtyRect: NSRect) {
         (exportMode ? NSColor.white : NSColor.textBackgroundColor).setFill()
-        dirtyRect.fill()
+        // Clipped to our own bounds. AppKit hands a subview a dirty rect covering the
+        // whole damaged region, which on the canvas board is the entire viewport — and
+        // filling *that* painted opaque white over every other card and the board itself.
+        dirtyRect.intersection(bounds).fill()
         guard let plan else { return }
 
         let ink = NSColor.labelColor

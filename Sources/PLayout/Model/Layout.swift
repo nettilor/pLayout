@@ -498,6 +498,140 @@ struct PrepSetup: Codable, Hashable {
     }
 }
 
+// MARK: - The board
+
+/// A card's place on the board, in board points.
+///
+/// Explicit `Double`s rather than a `CGRect`: Foundation encodes CG types as bare
+/// unkeyed arrays, and a `.plate` is JSON a person sometimes reads and the Python port
+/// has to write.
+struct CanvasFrame: Codable, Hashable {
+    var x: Double
+    var y: Double
+    var width: Double
+    var height: Double
+
+    static let minimum = CGSize(width: 140, height: 110)
+
+    init(x: Double, y: Double, width: Double, height: Double) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+    }
+
+    init(_ rect: CGRect) {
+        self.init(
+            x: Double(rect.origin.x), y: Double(rect.origin.y),
+            width: Double(rect.width), height: Double(rect.height)
+        )
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        x = try container.decodeIfPresent(Double.self, forKey: .x) ?? 0
+        y = try container.decodeIfPresent(Double.self, forKey: .y) ?? 0
+        width = try container.decodeIfPresent(Double.self, forKey: .width) ?? 560
+        height = try container.decodeIfPresent(Double.self, forKey: .height) ?? 420
+    }
+
+    var rect: CGRect {
+        CGRect(x: x, y: y, width: max(width, Self.minimum.width), height: max(height, Self.minimum.height))
+    }
+}
+
+/// One thing on the board — a plate, the prep table, or a note.
+struct CanvasItem: Codable, Hashable, Identifiable {
+    enum Kind: String, Codable {
+        case plate
+        case prep
+        case note
+    }
+
+    var id: UUID = UUID()
+    var kind: Kind
+    /// `.plate` only.
+    var plateID: UUID?
+    var frame: CanvasFrame
+    /// `.note` only.
+    var text: String = ""
+    var colorHex: String?
+
+    init(
+        id: UUID = UUID(), kind: Kind, plateID: UUID? = nil, frame: CanvasFrame,
+        text: String = "", colorHex: String? = nil
+    ) {
+        self.id = id
+        self.kind = kind
+        self.plateID = plateID
+        self.frame = frame
+        self.text = text
+        self.colorHex = colorHex
+    }
+
+    /// `kind` is the one required field — an item whose kind this build does not know is
+    /// not something to guess at, so it throws and `CanvasLayout` drops it.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try container.decode(Kind.self, forKey: .kind)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        plateID = try container.decodeIfPresent(UUID.self, forKey: .plateID)
+        frame = try container.decodeIfPresent(CanvasFrame.self, forKey: .frame)
+            ?? CanvasFrame(x: 0, y: 0, width: 560, height: 420)
+        text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+        colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex)
+    }
+}
+
+/// Where the cards sit.
+///
+/// **An ordered array, not a dictionary keyed by plate.** Draw order is z-order on a
+/// board, and Swift's dictionary iteration order is not stable between launches, so
+/// overlapping cards would come up stacked differently every time a document opened.
+///
+/// It lives on `Layout` rather than as a field on `Plate` for three reasons that are all
+/// behaviour: `Layout.snapshotMatching` compares whole `Plate` values, so nudging a card
+/// would empty the saved-state bookmark; a `Plate` field rides into `LayoutSnapshot`, so
+/// reverting a state would rearrange the board; and duplicating a plate would land the
+/// copy exactly on top of its original.
+///
+/// nil until the user actually moves something. Auto-placement is computed at display
+/// time and never written, so merely *looking* at the board does not dirty a document
+/// that then autosaves itself.
+struct CanvasLayout: Codable, Hashable {
+    /// Back to front.
+    var items: [CanvasItem] = []
+
+    init(items: [CanvasItem] = []) {
+        self.items = items
+    }
+
+    /// An item of a kind this build does not know is dropped rather than thrown on —
+    /// the same leniency `wellLabelMode` already gets, so a file from a newer build
+    /// still opens.
+    private struct LenientItem: Codable {
+        let item: CanvasItem?
+        init(from decoder: Decoder) throws { item = try? CanvasItem(from: decoder) }
+        func encode(to encoder: Encoder) throws { try item?.encode(to: encoder) }
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let lenient = try container.decodeIfPresent([LenientItem].self, forKey: .items) ?? []
+        items = lenient.compactMap(\.item)
+    }
+
+    var isEmpty: Bool { items.isEmpty }
+
+    func item(forPlate id: UUID) -> CanvasItem? {
+        items.first { $0.kind == .plate && $0.plateID == id }
+    }
+
+    var prepItem: CanvasItem? { items.first { $0.kind == .prep } }
+
+    subscript(id: UUID) -> CanvasItem? { items.first { $0.id == id } }
+}
+
 // MARK: - Layout (the document's value)
 
 struct Layout: Codable, Hashable {
@@ -523,6 +657,9 @@ struct Layout: Codable, Hashable {
     /// factor picked — which is what keeps every document written before it byte-identical
     /// after a round trip.
     var prep: PrepSetup?
+    /// How the document is arranged on the canvas board. nil until something is put
+    /// there, so a document that never opens the canvas encodes exactly as before.
+    var canvas: CanvasLayout?
 
     /// Enough saved states to experiment freely, bounded so a document cannot grow
     /// without limit. The oldest is dropped once this is reached.
@@ -537,7 +674,8 @@ struct Layout: Codable, Hashable {
         orientation: PlateOrientation = .automatic,
         snapshots: [LayoutSnapshot] = [],
         notes: String = "",
-        prep: PrepSetup? = nil
+        prep: PrepSetup? = nil,
+        canvas: CanvasLayout? = nil
     ) {
         self.formatVersion = formatVersion
         self.factors = factors
@@ -548,6 +686,7 @@ struct Layout: Codable, Hashable {
         self.snapshots = snapshots
         self.notes = notes
         self.prep = prep
+        self.canvas = canvas
     }
 
     /// Written by hand rather than synthesized: Swift's generated decoder ignores
@@ -575,6 +714,7 @@ struct Layout: Codable, Hashable {
         snapshots = try container.decodeIfPresent([LayoutSnapshot].self, forKey: .snapshots) ?? []
         notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
         prep = try container.decodeIfPresent(PrepSetup.self, forKey: .prep)
+        canvas = try container.decodeIfPresent(CanvasLayout.self, forKey: .canvas)
 
         // A hand-edited or truncated file can carry a well column that no longer
         // matches its plate; normalise once here so nothing downstream has to care.

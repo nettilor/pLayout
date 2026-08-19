@@ -29,8 +29,17 @@ struct ContentView: View {
                 Divider()
                 // The ideal size here is what decides how large a new window opens,
                 // so it is set to give a 96-well plate comfortable wells.
-                PlateCanvas(editor: editor)
-                    .frame(minWidth: 420, idealWidth: 940, minHeight: 320, idealHeight: 660)
+                // The frame sits outside the branch on purpose: it is what decides how
+                // large a new window opens, and moving it inside would resize the window
+                // every time the board was toggled.
+                Group {
+                    if editor.showsCanvas {
+                        CanvasBoard(editor: editor)
+                    } else {
+                        PlateCanvas(editor: editor)
+                    }
+                }
+                .frame(minWidth: 420, idealWidth: 940, minHeight: 320, idealHeight: 660)
                 Divider()
                 statusBar
             }
@@ -116,6 +125,9 @@ struct ContentView: View {
         .onTapGesture {
             let renaming = plateClicks.isDoubleClick(on: plate.id)
             editor.activePlateID = plate.id
+            // On the board a tab still names the plate you are editing, so it brings that
+            // card into view rather than leaving you to find it.
+            if editor.showsCanvas { editor.board?.reveal(plateID: plate.id) }
             if renaming {
                 renamingPlateID = plate.id
             } else {
@@ -182,7 +194,9 @@ struct ContentView: View {
                     .transition(.opacity)
             }
 
-            if editor.canZoomOut {
+            // `showsZoomReadout`, not `canZoomOut`: on the board, fitting everything is
+            // usually below 100%, so the readout would disappear exactly when it matters.
+            if editor.showsZoomReadout {
                 Button {
                     editor.zoomToFit()
                 } label: {
@@ -192,7 +206,7 @@ struct ContentView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.accentColor)
-                .help("Fit the plate to the window (⌘0)")
+                .help(editor.showsCanvas ? "Fit everything on the board (⌘0)" : "Fit the plate to the window (⌘0)")
 
                 Divider().frame(height: 12)
             }
@@ -440,6 +454,7 @@ struct ShortcutsCard: View {
         Row(key: "rest on row", detail: "Spotlight a condition — the rest of the plate dims"),
         Row(key: "click ↻ corner", detail: "Turn the plate 90°, and back again (⇧⌘L)"),
         Row(key: "⇧⌘O", detail: "Overview — every factor at once, nothing armed"),
+        Row(key: "⇧⌘K", detail: "Canvas — plates, prep and notes side by side"),
         Row(key: "pinch", detail: "Zoom in  ·  ⌘0 fits the plate again"),
         Row(key: "⌘C  /  ⌘V", detail: "Copy / paste as Excel cells"),
         Row(key: "⇧⌘C", detail: "Copy including row & column headers"),
