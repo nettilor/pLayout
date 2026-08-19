@@ -70,7 +70,9 @@ enum CanvasArrangement {
     static func resolved(
         saved: CanvasLayout?, plates: [Plate], orientation: PlateOrientation, includesPrep: Bool
     ) -> [CanvasItem] {
-        let plateIDs = Set(plates.map(\.id))
+        let dismissed = Set(saved?.dismissedPlates ?? [])
+        let plateIDs = Set(plates.map(\.id)).subtracting(dismissed)
+        let includesPrep = includesPrep && !(saved?.hidesPrep ?? false)
         var items: [CanvasItem] = []
 
         // Saved items first, in their stored z-order, minus anything that no longer exists.
@@ -89,10 +91,10 @@ enum CanvasArrangement {
 
         var placed = items.map(\.frame.rect)
 
-        for plate in plates where !items.contains(where: { $0.kind == .plate && $0.plateID == plate.id }) {
-            let size = size(
-                forPlate: plate.format, quarterTurns: orientation.quarterTurns(for: plate.format)
-            )
+        for plate in plates where plateIDs.contains(plate.id)
+            && !items.contains(where: { $0.kind == .plate && $0.plateID == plate.id }) {
+            let turns = (plate.orientation ?? orientation).quarterTurns(for: plate.format)
+            let size = size(forPlate: plate.format, quarterTurns: turns)
             let frame = nextFrame(of: size, avoiding: placed)
             placed.append(frame)
             items.append(

@@ -24,6 +24,8 @@ final class CanvasBoardView: NSView {
     func attach(editor: PlateEditor) {
         self.editor = editor
         editor.board = self
+        // A plate tab dragged onto the board puts that plate's card back.
+        registerForDraggedTypes([.string])
         // The board's own shape depends on the document and on which plate is active;
         // everything finer than that is the cards' own business.
         cancellable = Publishers.MergeMany([
@@ -39,8 +41,15 @@ final class CanvasBoardView: NSView {
     /// cannot destroy a drag in flight.
     func reload() {
         guard let editor else { return }
+        // Never rebuild mid-drag. Re-adding a card to reorder it cancels the mouse
+        // tracking of the very view being dragged — which is what made cards jump
+        // around and, on a card already at the front, refuse to move at all.
+        guard !cards.values.contains(where: { $0.isDragging }) else { return }
         items = editor.canvasItems
         var live: Set<UUID> = []
+        // Built once per reload rather than once per card: it walks every well of every
+        // plate, so asking each card for its own copy was pure waste.
+        let plan = items.contains { $0.kind == .prep } ? editor.prepPlan : nil
 
         for item in items {
             live.insert(item.id)
@@ -50,7 +59,7 @@ final class CanvasBoardView: NSView {
             card.title = title(for: item, editor: editor)
             card.isActive = item.kind == .plate && item.plateID == editor.activePlateID
             if !card.isDragging { card.frame = item.frame.rect }
-            card.refresh(item: item, editor: editor)
+            card.refresh(item: item, prepPlan: plan)
         }
 
         for (id, card) in cards where !live.contains(id) {
@@ -63,8 +72,7 @@ final class CanvasBoardView: NSView {
             if let card = cards[item.id] { addSubview(card, positioned: .above, relativeTo: nil) }
         }
 
-        let extent = CanvasArrangement.extent(of: items)
-        if frame.size != extent.size { setFrameSize(extent.size) }
+        applyExtent()
         handOverFocusIfNeeded()
         needsDisplay = true
     }
@@ -84,10 +92,13 @@ final class CanvasBoardView: NSView {
         card.onCommitFrame = { [weak editor] frame in
             editor?.setCanvasFrame(item.id, to: frame)
         }
+        // Activation only — deliberately *not* a document write. Bringing the card to the
+        // front is folded into the frame commit on mouse up, so a press cannot edit the
+        // document underneath a drag that is about to start.
         card.onActivate = { [weak editor] in
             if item.kind == .plate, let id = item.plateID { editor?.activatePlate(id) }
-            editor?.bringCanvasItemToFront(item.id)
         }
+        card.onClose = { [weak editor] in editor?.closeCanvasItem(item.id) }
         card.onOpen = { [weak editor] in
             if item.kind == .note { editor?.noteTarget = .canvasNote(item.id) }
         }
@@ -102,9 +113,7 @@ final class CanvasBoardView: NSView {
             if let id = item.plateID { plate.attach(editor: editor, role: .card(plateID: id)) }
             return plate
         case .prep:
-            let table = PrepTableView()
-            table.plan = editor.prepPlan
-            return table
+            return PrepTableView()
         case .note:
             return CanvasNoteView()
         }
@@ -126,6 +135,18 @@ final class CanvasBoardView: NSView {
 
     // MARK: - Geometry the scroll view asks for
 
+    /// The board's own size: what is on it plus room to pan, and never smaller than the
+    /// viewport asks for. Zooming out makes the clip view's *bounds* grow, so without the
+    /// second half the background simply ran out and the board looked like a torn sheet.
+    func applyExtent() {
+        var size = CanvasArrangement.extent(of: items).size
+        if let clip = enclosingScrollView?.contentView {
+            size.width = max(size.width, clip.bounds.width)
+            size.height = max(size.height, clip.bounds.height)
+        }
+        if frame.size != size { setFrameSize(size) }
+    }
+
     /// What is actually on the board, with no padding — what "fit everything" measures.
     var cardsExtent: CGRect {
         let frames = items.map(\.frame.rect)
@@ -143,6 +164,7 @@ final class CanvasBoardView: NSView {
 
     /// The magnification, passed to the cards as a drawing hint.
     func noteDisplayScale(_ scale: CGFloat) {
+        applyExtent()
         guard abs(scale - displayScale) > 0.001 else { return }
         displayScale = scale
         for card in cards.values {
@@ -178,6 +200,35 @@ final class CanvasBoardView: NSView {
         }
     }
 
+    // MARK: - Dropping a plate tab onto the board
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        droppedPlate(from: sender) != nil ? .copy : []
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        droppedPlate(from: sender) != nil ? .copy : []
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard let plateID = droppedPlate(from: sender) else { return false }
+        var point = convert(sender.draggingLocation, from: nil)
+        // Drop under the cursor rather than starting at it, so the card lands where it
+        // looked like it was going.
+        point.x = max(0, point.x - 60)
+        point.y = max(0, point.y - CanvasArrangement.titleBarHeight / 2)
+        editor?.placeOnCanvas(plateID: plateID, at: point)
+        return true
+    }
+
+    private func droppedPlate(from sender: NSDraggingInfo) -> UUID? {
+        guard let text = sender.draggingPasteboard.string(forType: .string),
+              let id = UUID(uuidString: text),
+              editor?.layout.plates.contains(where: { $0.id == id }) == true
+        else { return nil }
+        return id
+    }
+
     override func mouseDown(with event: NSEvent) {
         // Reaching the board itself means the click missed every card.
         guard event.clickCount == 2, let editor else { return }
@@ -201,6 +252,7 @@ final class CanvasCardView: NSView {
     var onCommitFrame: ((CGRect) -> Void)?
     var onActivate: (() -> Void)?
     var onOpen: (() -> Void)?
+    var onClose: (() -> Void)?
 
     var content: NSView? {
         didSet {
@@ -211,7 +263,10 @@ final class CanvasCardView: NSView {
     }
 
     static let titleHeight = CanvasArrangement.titleBarHeight
-    private static let gripSize: CGFloat = 16
+    /// Generous on purpose: a 16 pt corner was genuinely hard to hit, so the whole
+    /// right-hand and bottom edge resizes, not just the little triangle that shows it.
+    private static let gripSize: CGFloat = 26
+    private static let edgeGrab: CGFloat = 10
 
     private enum Drag { case none, move, resize }
     private var drag: Drag = .none
@@ -229,15 +284,14 @@ final class CanvasCardView: NSView {
 
     override var isFlipped: Bool { true }
 
-    func refresh(item: CanvasItem, editor: PlateEditor) {
+    func refresh(item: CanvasItem, prepPlan: DilutionPlan?) {
         if let note = content as? CanvasNoteView {
             note.text = item.text
             note.colorHex = item.colorHex
         }
-        if let table = content as? PrepTableView {
-            table.plan = editor.prepPlan
+        if let table = content as? PrepTableView, table.plan != prepPlan {
+            table.plan = prepPlan
         }
-        content?.needsDisplay = true
     }
 
     override func layout() {
@@ -284,7 +338,7 @@ final class CanvasCardView: NSView {
         let style = NSMutableParagraphStyle()
         style.lineBreakMode = .byTruncatingTail
         (title as NSString).draw(
-            in: bar.insetBy(dx: 9, dy: 5),
+            in: NSRect(x: 9, y: 5, width: max(0, bounds.width - 36), height: bar.height - 10),
             withAttributes: [
                 .font: NSFont.systemFont(ofSize: 11, weight: isActive ? .semibold : .regular),
                 .foregroundColor: NSColor.labelColor,
@@ -297,6 +351,19 @@ final class CanvasCardView: NSView {
         (isActive ? NSColor.controlAccentColor : NSColor.separatorColor).setStroke()
         shape.lineWidth = isActive ? 2 : 1
         shape.stroke()
+
+        // Close: takes the card off the board. A plate is only hidden by it — the plate
+        // itself is untouched, and dragging its tab back brings the card back.
+        let cross = NSBezierPath()
+        let box = closeRect.insetBy(dx: 5, dy: 5)
+        cross.move(to: NSPoint(x: box.minX, y: box.minY))
+        cross.line(to: NSPoint(x: box.maxX, y: box.maxY))
+        cross.move(to: NSPoint(x: box.maxX, y: box.minY))
+        cross.line(to: NSPoint(x: box.minX, y: box.maxY))
+        NSColor.secondaryLabelColor.setStroke()
+        cross.lineWidth = 1.5
+        cross.lineCapStyle = .round
+        cross.stroke()
 
         NSColor.tertiaryLabelColor.setStroke()
         let grip = NSBezierPath()
@@ -313,29 +380,60 @@ final class CanvasCardView: NSView {
                width: Self.gripSize, height: Self.gripSize)
     }
 
+    /// Anywhere along the right or bottom edge, not only the corner.
+    private func resizeRegion(contains point: CGPoint) -> Bool {
+        if gripRect.contains(point) { return true }
+        let nearRight = point.x >= bounds.maxX - Self.edgeGrab
+        let nearBottom = point.y >= bounds.maxY - Self.edgeGrab
+        return (nearRight || nearBottom) && point.y > Self.titleHeight
+    }
+
+    private var closeRect: NSRect {
+        NSRect(x: bounds.maxX - 22, y: 4, width: 18, height: 18)
+    }
+
+    /// The cursor says which edges do what, so the grab areas do not have to be guessed.
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(NSRect(x: 0, y: 0, width: bounds.width, height: Self.titleHeight),
+                      cursor: .openHand)
+        addCursorRect(gripRect, cursor: .crosshair)
+    }
+
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        onActivate?()
-        if gripRect.contains(point) {
+        if closeRect.contains(point) {
+            drag = .none
+            onActivate?()
+            onClose?()
+            return
+        }
+        if resizeRegion(contains: point) {
             drag = .resize
         } else if point.y <= Self.titleHeight {
             drag = .move
             if event.clickCount == 2 { onOpen?() }
         } else {
             drag = .none
+            onActivate?()
             return
         }
+        // Marked as dragging *before* anything that could touch the document: a reload
+        // mid-press re-adds this very view and cancels the drag AppKit is about to send.
         isDragging = true
-        dragOrigin = convert(event.locationInWindow, from: nil)
+        onActivate?()
+        // Anchored in the **board's** coordinates. Anchoring in the card's own meant the
+        // reference point moved with the card as it was dragged, which is what made the
+        // cards jump around instead of following the mouse.
+        dragOrigin = superview?.convert(event.locationInWindow, from: nil) ?? .zero
         startFrame = frame
     }
 
     override func mouseDragged(with event: NSEvent) {
         guard drag != .none, let superview else { return }
         let now = superview.convert(event.locationInWindow, from: nil)
-        let start = convert(dragOrigin, to: superview)
-        let dx = now.x - start.x
-        let dy = now.y - start.y
+        let dx = now.x - dragOrigin.x
+        let dy = now.y - dragOrigin.y
         switch drag {
         case .move:
             frame = CGRect(

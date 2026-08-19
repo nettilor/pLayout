@@ -122,6 +122,9 @@ struct ContentView: View {
                 .strokeBorder(isActive ? Color.accentColor.opacity(0.5) : .clear, lineWidth: 1)
         )
         .contentShape(Rectangle())
+        // Dragged onto the board, a tab puts that plate's card back — the other half of
+        // the card's close button.
+        .onDrag { NSItemProvider(object: plate.id.uuidString as NSString) }
         .onTapGesture {
             let renaming = plateClicks.isDoubleClick(on: plate.id)
             editor.activePlateID = plate.id

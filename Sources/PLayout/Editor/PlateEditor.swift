@@ -780,14 +780,30 @@ final class PlateEditor: ObservableObject {
     /// plate as it is shown.
     func rotatePlate() {
         let wasTurned = isTurned
-        edit("Turn Plate") { layout in layout.orientation = wasTurned ? .upright : .turned }
+        // The *active* plate turns, not the document: on the board, each plate stands on
+        // its own end. A document that has never turned a plate individually still reads
+        // its default from `layout.orientation`.
+        let index = plateIndex
+        edit("Turn Plate") { layout in
+            guard layout.plates.indices.contains(index) else { return }
+            layout.plates[index].orientation = wasTurned ? .upright : .turned
+        }
         // Says where A1 went, which is the quickest way to see which way round it is.
         flash(wasTurned ? "Upright. A1 is top left." : "Turned 90°. A1 is now top right.")
     }
 
     /// Quarter turns clockwise for the plate currently shown. Depends on the plate,
     /// because `.automatic` lies a tall plate down and leaves a wide one alone.
-    var quarterTurns: Int { layout.orientation.quarterTurns(for: format) }
+    /// Which way round a plate is drawn: its own setting when it has one, the document's
+    /// otherwise.
+    func resolvedOrientation(for plate: Plate) -> PlateOrientation {
+        plate.orientation ?? layout.orientation
+    }
+
+    var quarterTurns: Int {
+        guard let plate else { return layout.orientation.quarterTurns(for: format) }
+        return resolvedOrientation(for: plate).quarterTurns(for: plate.format)
+    }
     var isTurned: Bool { quarterTurns != 0 }
 
     func setPadWellLabels(_ padded: Bool) {
@@ -1043,7 +1059,11 @@ final class PlateEditor: ObservableObject {
         // prep window can show a table the moment it opens, which would put a prep card
         // on the board of every document that has never used the feature. Same opt-in
         // rule as the workbook's Prep tab.
-        let hasPrep = layout.prep != nil && prepPlan?.isEmpty == false
+        //
+        // And deliberately *cheap*: building the plan walks every well of every plate,
+        // and `canvasItems` is read on every board reload and every card edit. Asking it
+        // whether a prep card exists made the whole board crawl.
+        let hasPrep = layout.prep.flatMap { layout.factor(id: $0.doseFactorID) } != nil
         return CanvasArrangement.resolved(
             saved: layout.canvas, plates: layout.plates,
             orientation: layout.orientation, includesPrep: hasPrep
@@ -1062,8 +1082,18 @@ final class PlateEditor: ObservableObject {
     func setCanvasFrame(_ id: UUID, to frame: CGRect, actionName: String = "Move Card") {
         var items = canvasItems
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
-        items[index].frame = CanvasFrame(frame)
-        edit(actionName) { layout in layout.canvas = CanvasLayout(items: items) }
+        // Moved *and* raised in the same edit: one undo step, and no document write
+        // during the drag itself.
+        var item = items.remove(at: index)
+        item.frame = CanvasFrame(frame)
+        items.append(item)
+        let dismissed = layout.canvas?.dismissedPlates ?? []
+        let hidesPrep = layout.canvas?.hidesPrep ?? false
+        edit(actionName) { layout in
+            layout.canvas = CanvasLayout(
+                items: items, dismissedPlates: dismissed, hidesPrep: hidesPrep
+            )
+        }
     }
 
     /// Array order is z-order, so raising a card is moving it to the end.
@@ -1083,6 +1113,63 @@ final class PlateEditor: ObservableObject {
         items.append(note)
         edit("Add Note") { layout in layout.canvas = CanvasLayout(items: items) }
         noteTarget = .canvasNote(note.id)
+    }
+
+    /// Takes a card off the board. A note is deleted outright; a plate or the prep table
+    /// is only *hidden* — the plate still exists, and dragging its tab back onto the
+    /// board brings the card back.
+    func closeCanvasItem(_ id: UUID) {
+        var items = canvasItems
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        let closed = items.remove(at: index)
+        var dismissed = layout.canvas?.dismissedPlates ?? []
+        var hidesPrep = layout.canvas?.hidesPrep ?? false
+        switch closed.kind {
+        case .plate:
+            if let plateID = closed.plateID, !dismissed.contains(plateID) { dismissed.append(plateID) }
+        case .prep:
+            hidesPrep = true
+        case .note:
+            break
+        }
+        edit(closed.kind == .note ? "Delete Note" : "Close Card") { layout in
+            layout.canvas = CanvasLayout(
+                items: items, dismissedPlates: dismissed, hidesPrep: hidesPrep
+            )
+        }
+    }
+
+    /// Puts a plate back on the board at a point — what a drag from the plate tabs does.
+    func placeOnCanvas(plateID: UUID, at point: CGPoint) {
+        guard layout.plates.contains(where: { $0.id == plateID }) else { return }
+        var items = canvasItems
+        var dismissed = layout.canvas?.dismissedPlates ?? []
+        dismissed.removeAll { $0 == plateID }
+
+        if let existing = items.firstIndex(where: { $0.kind == .plate && $0.plateID == plateID }) {
+            // Already there: bring it to the drop point and to the front.
+            var item = items.remove(at: existing)
+            item.frame = CanvasFrame(CGRect(origin: point, size: item.frame.rect.size))
+            items.append(item)
+        } else if let plate = layout.plates.first(where: { $0.id == plateID }) {
+            let size = CanvasArrangement.size(
+                forPlate: plate.format,
+                quarterTurns: resolvedOrientation(for: plate).quarterTurns(for: plate.format)
+            )
+            items.append(
+                CanvasItem(
+                    id: plate.id, kind: .plate, plateID: plate.id,
+                    frame: CanvasFrame(CGRect(origin: point, size: size))
+                )
+            )
+        }
+        edit("Add to Canvas") { layout in
+            layout.canvas = CanvasLayout(
+                items: items, dismissedPlates: dismissed,
+                hidesPrep: layout.canvas?.hidesPrep ?? false
+            )
+        }
+        activatePlate(plateID)
     }
 
     /// Only notes can be removed — a plate's card is the plate, and hiding one would be a

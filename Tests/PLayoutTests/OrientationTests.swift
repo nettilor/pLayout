@@ -240,7 +240,12 @@ final class OrientationTests: XCTestCase {
         let reopened = try JSONDecoder().decode(
             Layout.self, from: JSONEncoder().encode(document.layout)
         )
-        XCTAssertEqual(reopened.orientation, .turned, "the orientation did not survive a save")
+        // Turning is per plate now — the board shows several at once, and standing a tall
+        // plate on its end must not lie the 96-well beside it down too. The document's own
+        // `orientation` is the default a plate falls back to when it has no opinion.
+        XCTAssertEqual(
+            reopened.plates[0].orientation, .turned, "the orientation did not survive a save"
+        )
 
         undo.undo()
         XCTAssertEqual(editor.quarterTurns, 0, "turning was not undoable")
@@ -288,7 +293,13 @@ final class OrientationTests: XCTestCase {
         let before = document.layout.plates
 
         editor.rotatePlate()
-        XCTAssertEqual(document.layout.plates, before, "turning moved well values")
+        // The plate now records which way round it is, so compare what turning must never
+        // touch rather than the whole value.
+        XCTAssertEqual(
+            document.layout.plates.map(\.assignments), before.map(\.assignments),
+            "turning moved well values"
+        )
+        XCTAssertEqual(document.layout.plates.map(\.format), before.map(\.format))
     }
 }
 

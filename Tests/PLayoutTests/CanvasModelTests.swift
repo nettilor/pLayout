@@ -119,11 +119,13 @@ final class CanvasModelTests: XCTestCase {
         editor.undoManager = undo
 
         editor.setCanvasFrame(before[0].id, to: CGRect(x: 900, y: 700, width: 560, height: 420))
-        XCTAssertEqual(document.layout.canvas?.items.count, 3,
-                       "the first deliberate move freezes every card where it appears")
-        XCTAssertEqual(document.layout.canvas?.items[0].frame.x, 900)
+        let saved = try? XCTUnwrap(document.layout.canvas?.items)
+        XCTAssertEqual(saved?.count, 3, "the first deliberate move freezes every card where it appears")
+        XCTAssertEqual(saved?.first { $0.id == before[0].id }?.frame.x, 900)
+        // Moving a card also raises it, so it is last — array order is z-order.
+        XCTAssertEqual(saved?.last?.id, before[0].id)
         // The others must be exactly where they already were, not re-placed around the move.
-        XCTAssertEqual(document.layout.canvas?.items[1].frame, before[1].frame)
+        XCTAssertEqual(saved?.first { $0.id == before[1].id }?.frame, before[1].frame)
 
         undo.undo()
         XCTAssertNil(document.layout.canvas)
@@ -171,6 +173,65 @@ final class CanvasModelTests: XCTestCase {
         XCTAssertEqual(editor.canvasItems.filter { $0.kind == .plate }.count, 3,
                        "a plate's card is the plate; hiding it would be a way to lose one")
         XCTAssertEqual(document.layout.plates.count, 3)
+    }
+
+    // MARK: - Closing and re-adding
+
+    /// Closing a card takes it off the board. It must not touch the plate itself — that
+    /// would be a way to lose a plate by tidying up.
+    func testClosingAPlateCardHidesItWithoutDeletingThePlate() {
+        let (document, editor) = multiPlate()
+        let card = try? XCTUnwrap(editor.canvasItems.first { $0.kind == .plate })
+        let plateID = try? XCTUnwrap(card?.plateID)
+
+        editor.closeCanvasItem(card!.id)
+        XCTAssertEqual(document.layout.plates.count, 3, "the plate itself is untouched")
+        XCTAssertFalse(editor.canvasItems.contains { $0.plateID == plateID })
+        XCTAssertEqual(document.layout.canvas?.dismissedPlates, [plateID!])
+    }
+
+    func testDroppingItsTabBackPutsTheCardWhereItWasDropped() {
+        let (document, editor) = multiPlate()
+        let card = try? XCTUnwrap(editor.canvasItems.first { $0.kind == .plate })
+        let plateID = try? XCTUnwrap(card?.plateID)
+        editor.closeCanvasItem(card!.id)
+
+        editor.placeOnCanvas(plateID: plateID!, at: CGPoint(x: 700, y: 500))
+        let back = try? XCTUnwrap(editor.canvasItems.first { $0.plateID == plateID })
+        XCTAssertEqual(back?.frame.x, 700)
+        XCTAssertEqual(back?.frame.y, 500)
+        XCTAssertEqual(document.layout.canvas?.dismissedPlates, [], "it is no longer dismissed")
+        XCTAssertEqual(editor.activePlateID, plateID, "and it becomes the plate you are editing")
+    }
+
+    func testClosingThePrepCardHidesOnlyThePrepCard() {
+        let (document, editor) = multiPlate()
+        document.layout.factors[0].kind = .numeric
+        editor.updatePrep { $0.doseFactorID = document.layout.factors[0].id }
+        let prep = try? XCTUnwrap(editor.canvasItems.first { $0.kind == .prep })
+
+        editor.closeCanvasItem(prep!.id)
+        XCTAssertFalse(editor.canvasItems.contains { $0.kind == .prep })
+        XCTAssertEqual(editor.canvasItems.filter { $0.kind == .plate }.count, 3)
+        XCTAssertNotNil(document.layout.prep, "the prep setup itself survives")
+    }
+
+    // MARK: - Turning one plate
+
+    /// The board shows several plates at once, so standing a tall one on its end must not
+    /// lie the 96-well beside it down as well.
+    func testTurningOnePlateLeavesTheOthersAlone() {
+        let (document, editor) = multiPlate()
+        let first = document.layout.plates[0].id
+        editor.activePlateID = first
+        editor.rotatePlate()
+
+        XCTAssertEqual(document.layout.plates[0].orientation, .turned)
+        XCTAssertNil(document.layout.plates[1].orientation, "the others keep the document default")
+        XCTAssertEqual(editor.quarterTurns, 1)
+
+        editor.activePlateID = document.layout.plates[1].id
+        XCTAssertEqual(editor.quarterTurns, 0, "and read their own turn, not the active one's")
     }
 
     func testBringingACardToTheFrontMovesItToTheEnd() {

@@ -387,10 +387,11 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         // Resolved from the plate this view actually shows. Orientation is document-wide
         // but is resolved *against a format*, so a card of a differently shaped plate has
         // to work its own turn out — `editor.quarterTurns` is the active plate's.
-        let format = shownPlate?.format ?? .well96
+        let plate = shownPlate
+        let format = plate?.format ?? .well96
+        let orientation = plate?.orientation ?? editor?.layout.orientation ?? .automatic
         return PlateGeometry(
-            format: format, bounds: bounds,
-            quarterTurns: editor?.layout.orientation.quarterTurns(for: format) ?? 0
+            format: format, bounds: bounds, quarterTurns: orientation.quarterTurns(for: format)
         )
     }
 
@@ -441,10 +442,16 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
 
         let plan = labelPlan(cell: geo.cell, mode: mode, factorCount: editor.layout.factors.count)
         // Factors shown as text lines; anything left over may fall back to the colour stripe.
-        let stacked = plan.lineCount >= 2 ? Array(editor.layout.factors.prefix(plan.lineCount)) : []
+        let stacked = plan.lineCount >= 2 && !(geo.cell * displayScale < 7)
+            ? Array(editor.layout.factors.prefix(plan.lineCount)) : []
         let overflow = stacked.isEmpty ? [] : Array(editor.layout.factors.dropFirst(plan.lineCount))
 
-        let showSingleText = mode.showsText && stacked.isEmpty && geo.cell >= 17
+        // Zoomed far out on the board, the labels and hairlines are mush on screen and
+        // drawing them is most of the cost of a board full of dense plates. `displayScale`
+        // is a *drawing* hint from the board — `PlateGeometry` still knows nothing of it.
+        let onScreenCell = geo.cell * displayScale
+        let coarse = onScreenCell < 7
+        let showSingleText = mode.showsText && stacked.isEmpty && geo.cell >= 17 && !coarse
         // A well too small to stack still has to say something in Overview, so factor 1
         // takes the well's text and the rest drop to the stripe — the same shape the
         // other modes take, only without a factor having been chosen.
@@ -491,7 +498,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
             : NSColor.quaternaryLabelColor.withAlphaComponent(exportMode ? 0.14 : 0.18))
         let neutralInk = customEmpty.map { $0.labelInk(textStyle) } ?? textStyle.neutralInk
         let hairline = NSColor.separatorColor.withAlphaComponent(0.6)
-        let drawHairlines = geo.cell >= 4
+        let drawHairlines = geo.cell >= 4 && !coarse
 
         for row in 0..<format.rows {
             for col in 0..<format.cols {

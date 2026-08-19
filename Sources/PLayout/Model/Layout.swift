@@ -248,6 +248,13 @@ struct Plate: Identifiable, Codable, Hashable {
     var wellNotes: [String: String] = [:]
     /// A note about the whole plate.
     var note: String = ""
+    /// Which way round *this* plate is drawn, overriding the document's setting. nil
+    /// means "follow the document", which is every plate in every file written before
+    /// plates could be turned independently.
+    ///
+    /// Per plate because the board shows several at once: turning a tall plate on its
+    /// side should not lie the 96-well next to it down as well.
+    var orientation: PlateOrientation?
 
     init(id: UUID = UUID(), name: String, format: PlateFormat = .well96) {
         self.id = id
@@ -256,7 +263,7 @@ struct Plate: Identifiable, Codable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, format, assignments, wellNotes, note
+        case id, name, format, assignments, wellNotes, note, orientation
     }
 
     /// Hand-written for the same reason `Layout` and `LayoutSnapshot` are: the
@@ -271,6 +278,7 @@ struct Plate: Identifiable, Codable, Hashable {
         assignments = try container.decodeIfPresent([String: [String?]].self, forKey: .assignments) ?? [:]
         wellNotes = try container.decodeIfPresent([String: String].self, forKey: .wellNotes) ?? [:]
         note = try container.decodeIfPresent(String.self, forKey: .note) ?? ""
+        orientation = try? container.decodeIfPresent(PlateOrientation.self, forKey: .orientation)
     }
 
     func note(well: Int) -> String? {
@@ -601,9 +609,15 @@ struct CanvasItem: Codable, Hashable, Identifiable {
 struct CanvasLayout: Codable, Hashable {
     /// Back to front.
     var items: [CanvasItem] = []
+    /// Plates taken off the board. The plate still exists — this is only about what is
+    /// on the board, which is why closing a card is not a destructive act.
+    var dismissedPlates: [UUID] = []
+    var hidesPrep: Bool = false
 
-    init(items: [CanvasItem] = []) {
+    init(items: [CanvasItem] = [], dismissedPlates: [UUID] = [], hidesPrep: Bool = false) {
         self.items = items
+        self.dismissedPlates = dismissedPlates
+        self.hidesPrep = hidesPrep
     }
 
     /// An item of a kind this build does not know is dropped rather than thrown on —
@@ -619,9 +633,11 @@ struct CanvasLayout: Codable, Hashable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let lenient = try container.decodeIfPresent([LenientItem].self, forKey: .items) ?? []
         items = lenient.compactMap(\.item)
+        dismissedPlates = try container.decodeIfPresent([UUID].self, forKey: .dismissedPlates) ?? []
+        hidesPrep = try container.decodeIfPresent(Bool.self, forKey: .hidesPrep) ?? false
     }
 
-    var isEmpty: Bool { items.isEmpty }
+    var isEmpty: Bool { items.isEmpty && dismissedPlates.isEmpty && !hidesPrep }
 
     func item(forPlate id: UUID) -> CanvasItem? {
         items.first { $0.kind == .plate && $0.plateID == id }
