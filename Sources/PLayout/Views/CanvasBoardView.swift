@@ -184,17 +184,25 @@ final class CanvasBoardView: NSView {
         NSColor.underPageBackgroundColor.setFill()
         dirtyRect.intersection(bounds).fill()
 
-        // A dot grid, so panning an empty board still reads as movement. Dropped when
-        // zoomed far out, where it would be noise rather than texture.
-        guard displayScale > 0.4 else { return }
-        let step: CGFloat = 40
+        // A dot grid, so panning an empty board still reads as movement.
+        //
+        // The step is scaled by the magnification so the dots stay the same distance
+        // apart *on screen*. With a fixed board-space step, zooming out to 19% asked for
+        // roughly 12,000 dots across a viewport-sized dirty rect — which is its own
+        // answer to why the board felt heavy when zoomed out.
+        guard displayScale > 0.25 else { return }
+        let step: CGFloat = max(40, 40 / max(displayScale, 0.05))
         NSColor.separatorColor.withAlphaComponent(0.5).setFill()
-        var y = (dirtyRect.minY / step).rounded(.down) * step
-        while y < dirtyRect.maxY {
-            var x = (dirtyRect.minX / step).rounded(.down) * step
-            while x < dirtyRect.maxX {
-                NSBezierPath(ovalIn: NSRect(x: x, y: y, width: 1.5, height: 1.5)).fill()
+        let dot = max(1.5, 1.5 / max(displayScale, 0.2))
+        let area = dirtyRect.intersection(bounds)
+        var y = (area.minY / step).rounded(.down) * step
+        var drawn = 0
+        while y < area.maxY, drawn < 6_000 {
+            var x = (area.minX / step).rounded(.down) * step
+            while x < area.maxX, drawn < 6_000 {
+                NSBezierPath(ovalIn: NSRect(x: x, y: y, width: dot, height: dot)).fill()
                 x += step
+                drawn += 1
             }
             y += step
         }
@@ -277,12 +285,32 @@ final class CanvasCardView: NSView {
         self.itemID = itemID
         self.kind = kind
         super.init(frame: .zero)
+        // A card contains its content: without this a plate frozen mid-resize spills
+        // outside its own card, and a prep table taller than its card draws over the
+        // board below it.
+        clipsToBounds = true
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
     override var isFlipped: Bool { true }
+
+    /// The content view fills the body, so without this a press on the resize edge lands
+    /// on the plate canvas — which implements `mouseDown` and swallows it. The chrome
+    /// (title bar, close button, resize band) belongs to the card and is claimed here,
+    /// before any subview is offered the point.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let local = superview.map({ convert(point, from: $0) }) else {
+            return super.hitTest(point)
+        }
+        guard bounds.contains(local) else { return super.hitTest(point) }
+        if closeRect.contains(local) || local.y <= Self.titleHeight
+            || resizeRegion(contains: local) {
+            return self
+        }
+        return super.hitTest(point)
+    }
 
     func refresh(item: CanvasItem, prepPlan: DilutionPlan?) {
         if let note = content as? CanvasNoteView {
@@ -307,6 +335,11 @@ final class CanvasCardView: NSView {
     /// that otherwise looked entirely correct.
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
+        // While a drag is live the content is left exactly as it is: re-laying a plate out
+        // is a full re-render of every well, and doing that on each frame is what made
+        // dragging a plate choppy where dragging the prep table was smooth. It catches up
+        // once, on mouse up.
+        guard !isDragging else { return }
         layoutContent()
     }
 
@@ -316,7 +349,11 @@ final class CanvasCardView: NSView {
             x: 1, y: Self.titleHeight,
             width: max(0, bounds.width - 2), height: max(0, bounds.height - Self.titleHeight - 1)
         )
-        if content.frame != body { content.frame = body }
+        // Only when it genuinely moved. Setting a view's `frame` calls `setFrameSize` even
+        // when just the origin changed, so an unconditional invalidation here redrew every
+        // plate on the board on every step of a drag.
+        guard content.frame != body else { return }
+        content.frame = body
         (content as? PrepTableView)?.fitWidth(to: body.width)
         content.needsDisplay = true
     }
@@ -454,8 +491,10 @@ final class CanvasCardView: NSView {
 
     override func mouseUp(with event: NSEvent) {
         guard drag != .none else { return }
+        let wasResizing = drag == .resize
         drag = .none
         isDragging = false
+        if wasResizing { layoutContent() }
         // Committed once, on mouse up: a drag is one ⌘Z, the same rule painting follows.
         onCommitFrame?(frame)
     }
