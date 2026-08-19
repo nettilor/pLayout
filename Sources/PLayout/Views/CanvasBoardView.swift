@@ -21,6 +21,11 @@ final class CanvasBoardView: NSView {
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { false }
 
+    /// The board always paints every pixel it is asked for. Saying so is what stops
+    /// AppKit's copy-on-scroll leaving unpainted strips behind — the white lines that
+    /// surfaced across the background while zooming and scrolling.
+    override var isOpaque: Bool { true }
+
     func attach(editor: PlateEditor) {
         self.editor = editor
         editor.board = self
@@ -181,8 +186,11 @@ final class CanvasBoardView: NSView {
     // MARK: - Board background and empty space
 
     override func draw(_ dirtyRect: NSRect) {
+        // The whole damaged rect, not clipped to bounds: this is the document view, so
+        // there is nothing behind it to protect, and any sliver left unpainted shows as
+        // a seam.
         NSColor.underPageBackgroundColor.setFill()
-        dirtyRect.intersection(bounds).fill()
+        dirtyRect.fill()
 
         // A dot grid, so panning an empty board still reads as movement.
         //
@@ -271,6 +279,9 @@ final class CanvasCardView: NSView {
     }
 
     static let titleHeight = CanvasArrangement.titleBarHeight
+    /// One radius, used by the layer mask and by the border stroke, so the outline and
+    /// the card it outlines cannot disagree.
+    static let cornerRadius: CGFloat = 10
     /// Generous on purpose: a 16 pt corner was genuinely hard to hit, so the whole
     /// right-hand and bottom edge resizes, not just the little triangle that shows it.
     private static let gripSize: CGFloat = 26
@@ -288,7 +299,14 @@ final class CanvasCardView: NSView {
         // A card contains its content: without this a plate frozen mid-resize spills
         // outside its own card, and a prep table taller than its card draws over the
         // board below it.
+        //
+        // Masked on the *layer* rather than with `clipsToBounds` alone, because that
+        // clips to the rectangular bounds — so the content painted square over the
+        // rounded fill and only the title-bar corners looked rounded.
         clipsToBounds = true
+        wantsLayer = true
+        layer?.cornerRadius = Self.cornerRadius
+        layer?.masksToBounds = true
     }
 
     @available(*, unavailable)
@@ -359,8 +377,10 @@ final class CanvasCardView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let radius: CGFloat = 8
-        let shape = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: radius, yRadius: radius)
+        let radius = Self.cornerRadius
+        let shape = NSBezierPath(
+            roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: radius, yRadius: radius
+        )
         NSColor.textBackgroundColor.setFill()
         shape.fill()
 

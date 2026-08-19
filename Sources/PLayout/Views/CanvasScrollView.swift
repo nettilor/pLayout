@@ -108,7 +108,12 @@ final class CanvasBoardController: NSViewController {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
     override func loadView() {
-        scroll.contentView = CenteringClipView()
+        // Redraw rather than blit while scrolling: with magnification in play the copied
+        // region and the damaged region do not line up on pixel boundaries, which is the
+        // other half of the seam problem.
+        let clip = CenteringClipView()
+        clip.copiesOnScroll = false
+        scroll.contentView = clip
         scroll.documentView = board
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = true
