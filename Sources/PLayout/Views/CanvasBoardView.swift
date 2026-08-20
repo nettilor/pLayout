@@ -525,7 +525,10 @@ final class CanvasCardView: NSView {
         let point = convert(event.locationInWindow, from: nil)
         if closeRect.contains(point) {
             drag = .none
-            onActivate?()
+            // Deliberately *not* activated first: taking a card off the board is not a
+            // way of choosing it, and making it the plate you are editing on the way out
+            // left the sidebar and the status bar describing a plate with no card left
+            // to show it.
             onClose?()
             return
         }

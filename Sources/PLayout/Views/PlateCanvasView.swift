@@ -858,18 +858,22 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
                 (trimmed as NSString)
                     .size(withAttributes: [.font: font(label.size * fraction, label.weight)]).width
             }
-            guard measure(at: 1) > label.available else { continue }
+            var width = measure(at: 1)
+            guard width > label.available else { continue }
 
             let floor = min(1, minimumSize / label.size)
-            var fraction = max(floor, label.available / measure(at: 1))
+            var fraction = max(floor, label.available / width)
             // The ratio gets close, because width is nearly linear in point size — but
             // only nearly, and a scale that only nearly fits would leave `drawFitted`
             // shrinking this one label a further percent or two on its own. That is the
             // ragged plate the whole option exists to avoid, so the gap is closed here
-            // by measuring, exactly as `drawFitted` closes its own.
+            // by measuring, exactly as `drawFitted` closes its own. One measurement per
+            // pass: this runs for every distinct name on every render.
             var attempts = 0
-            while fraction > floor, measure(at: fraction) > label.available, attempts < 8 {
-                fraction = max(floor, fraction * min(0.98, label.available / measure(at: fraction)))
+            while fraction > floor, attempts < 8 {
+                width = measure(at: fraction)
+                guard width > label.available else { break }
+                fraction = max(floor, fraction * min(0.98, label.available / width))
                 attempts += 1
             }
             scale = min(scale, fraction)

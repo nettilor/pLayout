@@ -261,6 +261,81 @@ final class CanvasModelTests: XCTestCase {
         XCTAssertNotNil(document.layout.prep, "the prep setup itself survives")
     }
 
+    /// A closed card has to stay closed through whatever you do to the board next.
+    ///
+    /// Every board edit rewrites `layout.canvas`, and rebuilding one from its items alone
+    /// silently resets what else it remembers — so adding a note, or any other edit that
+    /// only touches the items, used to bring every closed card back.
+    func testAClosedCardStaysClosedThroughTheNextBoardEdit() {
+        let (document, editor) = multiPlate()
+        let card = editor.canvasItems.first { $0.kind == .plate }!
+        let plateID = card.plateID!
+        editor.closeCanvasItem(card.id)
+        XCTAssertFalse(editor.canvasItems.contains { $0.plateID == plateID })
+
+        editor.addCanvasNote(at: CGPoint(x: 40, y: 40))
+        XCTAssertFalse(editor.canvasItems.contains { $0.plateID == plateID },
+                       "adding a note brought a closed card back")
+        XCTAssertEqual(document.layout.canvas?.dismissedPlates, [plateID])
+
+        let note = editor.canvasItems.first { $0.kind == .note }!
+        editor.saveNote("hello", for: PlateEditor.NoteTarget.canvasNote(note.id))
+        XCTAssertFalse(editor.canvasItems.contains { $0.plateID == plateID },
+                       "editing a note brought a closed card back")
+
+        editor.deleteCanvasItem(note.id)
+        XCTAssertFalse(editor.canvasItems.contains { $0.plateID == plateID },
+                       "deleting a note brought a closed card back")
+
+        let other = editor.canvasItems.first { $0.kind == .plate }!
+        editor.bringCanvasItemToFront(other.id)
+        XCTAssertFalse(editor.canvasItems.contains { $0.plateID == plateID },
+                       "raising a card brought a closed card back")
+    }
+
+    /// Closing the card of the plate you are editing has to hand editing to a card that
+    /// is still there. Otherwise the sidebar, the keyboard and the status bar all point
+    /// at a plate with nothing on screen to show it.
+    func testClosingTheActivePlatesCardHandsEditingToOneStillOnTheBoard() {
+        let (document, editor) = multiPlate()
+        let active = document.layout.plates[1].id
+        editor.activePlateID = active
+        let card = editor.canvasItems.first { $0.plateID == active }!
+
+        editor.closeCanvasItem(card.id)
+
+        XCTAssertNotEqual(editor.activePlateID, active)
+        XCTAssertTrue(
+            editor.canvasItems.contains { $0.kind == .plate && $0.plateID == editor.activePlateID },
+            "the plate being edited must be one you can see"
+        )
+    }
+
+    /// And closing someone else's card must not steal editing away from where you were.
+    func testClosingAnotherCardLeavesYouOnThePlateYouWereEditing() {
+        let (document, editor) = multiPlate()
+        let mine = document.layout.plates[0].id
+        editor.activePlateID = mine
+        let other = editor.canvasItems.first { $0.plateID == document.layout.plates[2].id }!
+
+        editor.closeCanvasItem(other.id)
+        XCTAssertEqual(editor.activePlateID, mine)
+    }
+
+    /// And the same for the prep card, which is remembered by a different field.
+    func testAClosedPrepCardStaysClosedThroughTheNextBoardEdit() {
+        let (document, editor) = multiPlate()
+        document.layout.factors[0].kind = .numeric
+        editor.updatePrep { $0.doseFactorID = document.layout.factors[0].id }
+        let prep = editor.canvasItems.first { $0.kind == .prep }!
+        editor.closeCanvasItem(prep.id)
+
+        editor.addCanvasNote(at: CGPoint(x: 40, y: 40))
+        XCTAssertFalse(editor.canvasItems.contains { $0.kind == .prep },
+                       "adding a note brought the prep card back")
+        XCTAssertEqual(document.layout.canvas?.hidesPrep, true)
+    }
+
     // MARK: - Turning one plate
 
     /// The board shows several plates at once, so standing a tall one on its end must not

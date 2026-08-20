@@ -273,7 +273,7 @@ final class PlateEditor: ObservableObject {
             var items = canvasItems
             guard let index = items.firstIndex(where: { $0.id == id }) else { return }
             items[index].text = clean
-            edit("Edit Note") { layout in layout.canvas = CanvasLayout(items: items) }
+            updateCanvas("Edit Note") { $0.items = items }
         }
     }
 
@@ -1104,6 +1104,21 @@ final class PlateEditor: ObservableObject {
         showsCanvas.toggle()
     }
 
+    /// The one way to write the board.
+    ///
+    /// Building a fresh `CanvasLayout` from its items is the trap this exists to close:
+    /// `dismissedPlates` and `hidesPrep` take their defaults, so any edit that only
+    /// reorders or adds items — a note, a raise — silently un-closed every card that had
+    /// been closed. Mutating what is already there cannot lose a field, and a field added
+    /// to `CanvasLayout` later is carried by every one of these sites for free.
+    private func updateCanvas(_ actionName: String, _ change: @escaping (inout CanvasLayout) -> Void) {
+        edit(actionName) { layout in
+            var canvas = layout.canvas ?? CanvasLayout()
+            change(&canvas)
+            layout.canvas = canvas
+        }
+    }
+
     /// Commits a card's place. Called once, on mouse up, so a drag is one ⌘Z.
     ///
     /// It writes **every** card, not just the moved one: the first deliberate move
@@ -1117,13 +1132,7 @@ final class PlateEditor: ObservableObject {
         var item = items.remove(at: index)
         item.frame = CanvasFrame(frame)
         items.append(item)
-        let dismissed = layout.canvas?.dismissedPlates ?? []
-        let hidesPrep = layout.canvas?.hidesPrep ?? false
-        edit(actionName) { layout in
-            layout.canvas = CanvasLayout(
-                items: items, dismissedPlates: dismissed, hidesPrep: hidesPrep
-            )
-        }
+        updateCanvas(actionName) { $0.items = items }
     }
 
     /// Array order is z-order, so raising a card is moving it to the end.
@@ -1133,7 +1142,7 @@ final class PlateEditor: ObservableObject {
         else { return }
         let item = items.remove(at: index)
         items.append(item)
-        edit("Bring to Front") { layout in layout.canvas = CanvasLayout(items: items) }
+        updateCanvas("Bring to Front") { $0.items = items }
     }
 
     func addCanvasNote(at point: CGPoint) {
@@ -1141,7 +1150,7 @@ final class PlateEditor: ObservableObject {
         let frame = CGRect(origin: point, size: CanvasArrangement.noteSize)
         let note = CanvasItem(kind: .note, frame: CanvasFrame(frame))
         items.append(note)
-        edit("Add Note") { layout in layout.canvas = CanvasLayout(items: items) }
+        updateCanvas("Add Note") { $0.items = items }
         noteTarget = .canvasNote(note.id)
     }
 
@@ -1152,20 +1161,25 @@ final class PlateEditor: ObservableObject {
         var items = canvasItems
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         let closed = items.remove(at: index)
-        var dismissed = layout.canvas?.dismissedPlates ?? []
-        var hidesPrep = layout.canvas?.hidesPrep ?? false
-        switch closed.kind {
-        case .plate:
-            if let plateID = closed.plateID, !dismissed.contains(plateID) { dismissed.append(plateID) }
-        case .prep:
-            hidesPrep = true
-        case .note:
-            break
+        // Editing follows the board: closing the card of the plate you are on would
+        // otherwise leave the sidebar, the keyboard and the status bar pointed at a
+        // plate with nothing on screen to show it.
+        if closed.kind == .plate, let plateID = closed.plateID, activePlateID == plateID,
+           let next = items.first(where: { $0.kind == .plate })?.plateID {
+            activatePlate(next)
         }
-        edit(closed.kind == .note ? "Delete Note" : "Close Card") { layout in
-            layout.canvas = CanvasLayout(
-                items: items, dismissedPlates: dismissed, hidesPrep: hidesPrep
-            )
+        updateCanvas(closed.kind == .note ? "Delete Note" : "Close Card") { canvas in
+            canvas.items = items
+            switch closed.kind {
+            case .plate:
+                if let plateID = closed.plateID, !canvas.dismissedPlates.contains(plateID) {
+                    canvas.dismissedPlates.append(plateID)
+                }
+            case .prep:
+                canvas.hidesPrep = true
+            case .note:
+                break
+            }
         }
     }
 
@@ -1173,8 +1187,6 @@ final class PlateEditor: ObservableObject {
     func placeOnCanvas(plateID: UUID, at point: CGPoint) {
         guard layout.plates.contains(where: { $0.id == plateID }) else { return }
         var items = canvasItems
-        var dismissed = layout.canvas?.dismissedPlates ?? []
-        dismissed.removeAll { $0 == plateID }
 
         if let existing = items.firstIndex(where: { $0.kind == .plate && $0.plateID == plateID }) {
             // Already there: bring it to the drop point and to the front.
@@ -1193,11 +1205,9 @@ final class PlateEditor: ObservableObject {
                 )
             )
         }
-        edit("Add to Canvas") { layout in
-            layout.canvas = CanvasLayout(
-                items: items, dismissedPlates: dismissed,
-                hidesPrep: layout.canvas?.hidesPrep ?? false
-            )
+        updateCanvas("Add to Canvas") { canvas in
+            canvas.items = items
+            canvas.dismissedPlates.removeAll { $0 == plateID }
         }
         activatePlate(plateID)
     }
@@ -1209,7 +1219,7 @@ final class PlateEditor: ObservableObject {
         guard let index = items.firstIndex(where: { $0.id == id }), items[index].kind == .note
         else { return }
         items.remove(at: index)
-        edit("Delete Note") { layout in layout.canvas = CanvasLayout(items: items) }
+        updateCanvas("Delete Note") { $0.items = items }
     }
 
     /// Clicking a card is how a plate becomes the editable one. Deliberately does not
