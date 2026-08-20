@@ -301,6 +301,39 @@ final class PreferencesTests: XCTestCase {
         XCTAssertNil(preferences.emptyWellColorHex)
     }
 
+    // MARK: - Canvas background
+
+    func testCanvasBackgroundRemembersResetsAndShrugsOffGarbage() {
+        let preferences = Preferences(defaults: defaults)
+        XCTAssertNil(preferences.canvasBackgroundColorHex)
+        XCTAssertEqual(preferences.canvasBackground, NSColor.underPageBackgroundColor)
+
+        preferences.canvasBackgroundColorHex = "#20242B"
+        XCTAssertEqual(Preferences(defaults: defaults).canvasBackgroundColorHex, "#20242B")
+        XCTAssertEqual(preferences.canvasBackground.hexString, "#20242B")
+
+        defaults.set("nightfall", forKey: "canvasBackgroundColorHex")
+        XCTAssertNil(Preferences(defaults: defaults).canvasBackgroundColorHex)
+
+        preferences.resetToDefaults()
+        XCTAssertNil(preferences.canvasBackgroundColorHex)
+    }
+
+    /// The dots have to stay visible whatever the board is set to, so they take their
+    /// contrast from the background rather than being a fixed grey.
+    func testTheDotGridContrastsWithWhateverTheBoardIs() {
+        let preferences = Preferences(defaults: defaults)
+        preferences.canvasBackgroundColorHex = "#101214"
+        let onDark = try? XCTUnwrap(preferences.canvasGrid.usingColorSpace(.sRGB))
+        preferences.canvasBackgroundColorHex = "#F4F4F5"
+        let onLight = try? XCTUnwrap(preferences.canvasGrid.usingColorSpace(.sRGB))
+
+        XCTAssertGreaterThan(
+            onDark!.brightnessComponent, onLight!.brightnessComponent,
+            "a dark board needs pale dots and a pale board needs dark ones"
+        )
+    }
+
     // MARK: - Overview block outlines
 
     func testBlockOutlineColourAndThicknessRememberAndReset() {

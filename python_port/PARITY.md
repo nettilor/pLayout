@@ -69,6 +69,7 @@ Mac `ShortcutsCard`, the README table, the menu item **and this file** in the sa
 | Plate typeface and text size | ✅ | M6 | |
 | Sidebar: per-factor condition counts | ✅ | M6 | |
 | Settings window in tabs | ✅ | M6 | |
+| Canvas board background colour | ⏳ | — | 1.5; dot grid takes its contrast from it |
 | Overview block outline colour and thickness | ⏳ | — | 1.5; default colour follows light/dark, thickness capped at a quarter of the cell |
 
 ## App and distribution

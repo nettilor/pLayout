@@ -196,6 +196,20 @@ final class Preferences: ObservableObject {
         }
     }
 
+    /// The canvas board's background — nil for the default, which follows light and dark
+    /// mode. Stored as "no opinion" rather than a copy of the default, so Reset restores
+    /// the *behaviour* and not a frozen colour.
+    @Published var canvasBackgroundColorHex: String? {
+        didSet {
+            guard canvasBackgroundColorHex != oldValue else { return }
+            if let hex = canvasBackgroundColorHex {
+                defaults.set(hex, forKey: Self.canvasBackgroundColorKey)
+            } else {
+                defaults.removeObject(forKey: Self.canvasBackgroundColorKey)
+            }
+        }
+    }
+
     /// The colour of the Overview block outlines — nil for the default, which follows
     /// light and dark mode the way the well ink does. Stored as "no opinion" rather
     /// than as a copy of the default, for the same reason the empty-well colour is.
@@ -301,6 +315,18 @@ final class Preferences: ObservableObject {
         return NSColor.quaternaryLabelColor.withAlphaComponent(exportMode ? 0.10 : 0.13)
     }
 
+    /// The board's background, resolved. Unlike the plate, the board is a surface you
+    /// look *at* rather than through, so a chosen colour is used exactly as chosen.
+    var canvasBackground: NSColor {
+        canvasBackgroundColorHex.flatMap { NSColor(hex: $0) } ?? .underPageBackgroundColor
+    }
+
+    /// The board's dot grid, which has to stay visible on whatever the background is —
+    /// so it is drawn from the background's own contrasting ink rather than a fixed grey.
+    var canvasGrid: NSColor {
+        canvasBackground.contrastingLabelColor.withAlphaComponent(0.22)
+    }
+
     /// The pen for the Overview block outlines. A chosen colour is used as it is, as
     /// everywhere else; the default is ink at a weight that reads over a pale tile and
     /// a dark one, a shade firmer on paper where there is no backlight to help it.
@@ -321,6 +347,7 @@ final class Preferences: ObservableObject {
     private static let wellShapeKey = "newDocumentWellShape"
     private static let newConditionColorsKey = "newConditionColors"
     private static let emptyWellColorKey = "emptyWellColorHex"
+    private static let canvasBackgroundColorKey = "canvasBackgroundColorHex"
     private static let groupOutlineColorKey = "groupOutlineColorHex"
     private static let groupOutlineThicknessKey = "groupOutlineThickness"
     private static let canvasFontFamilyKey = "canvasFontFamily"
@@ -344,6 +371,8 @@ final class Preferences: ObservableObject {
         // "no opinion", not as a black well or a crash.
         emptyWellColorHex = defaults.string(forKey: Self.emptyWellColorKey)
             .flatMap { NSColor(hex: $0) != nil ? $0 : nil }
+        canvasBackgroundColorHex = defaults.string(forKey: Self.canvasBackgroundColorKey)
+            .flatMap { NSColor(hex: $0) != nil ? $0 : nil }
         groupOutlineColorHex = defaults.string(forKey: Self.groupOutlineColorKey)
             .flatMap { NSColor(hex: $0) != nil ? $0 : nil }
         let storedThickness = defaults.object(forKey: Self.groupOutlineThicknessKey) as? Double
@@ -366,6 +395,7 @@ final class Preferences: ObservableObject {
         newDocumentWellShape = .round
         newConditionColors = .perFactor
         emptyWellColorHex = nil
+        canvasBackgroundColorHex = nil
         groupOutlineColorHex = nil
         groupOutlineThickness = Self.defaultGroupOutlineThickness
         canvasFontFamily = nil

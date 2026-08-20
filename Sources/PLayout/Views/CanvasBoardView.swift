@@ -36,9 +36,15 @@ final class CanvasBoardView: NSView {
         cancellable = Publishers.MergeMany([
             editor.document.$layout.map { _ in () }.eraseToAnyPublisher(),
             editor.$activePlateID.map { _ in () }.eraseToAnyPublisher(),
+            // The background colour lives outside any document, so a change in the
+            // Settings window has to reach every open board by hand.
+            Preferences.shared.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
         ])
         .receive(on: DispatchQueue.main)
-        .sink { [weak self] in self?.reload() }
+        .sink { [weak self] in
+            self?.applyBackground()
+            self?.reload()
+        }
         reload()
     }
 
@@ -146,6 +152,18 @@ final class CanvasBoardView: NSView {
 
     // MARK: - Geometry the scroll view asks for
 
+    /// The scroll view paints the same colour, so the strip beyond the board while a
+    /// rubber-band scroll overshoots does not flash a different one.
+    private func applyBackground() {
+        enclosingScrollView?.backgroundColor = Preferences.shared.canvasBackground
+        needsDisplay = true
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        applyBackground()
+    }
+
     /// The board's own size: what is on it plus room to pan, and never smaller than the
     /// viewport asks for. Zooming out makes the clip view's *bounds* grow, so without the
     /// second half the background simply ran out and the board looked like a torn sheet.
@@ -195,7 +213,7 @@ final class CanvasBoardView: NSView {
         // The whole damaged rect, not clipped to bounds: this is the document view, so
         // there is nothing behind it to protect, and any sliver left unpainted shows as
         // a seam.
-        NSColor.underPageBackgroundColor.setFill()
+        Preferences.shared.canvasBackground.setFill()
         dirtyRect.fill()
 
         // A dot grid, so panning an empty board still reads as movement.
@@ -206,7 +224,7 @@ final class CanvasBoardView: NSView {
         // answer to why the board felt heavy when zoomed out.
         guard displayScale > 0.25 else { return }
         let step: CGFloat = max(40, 40 / max(displayScale, 0.05))
-        NSColor.separatorColor.withAlphaComponent(0.5).setFill()
+        Preferences.shared.canvasGrid.setFill()
         let dot = max(1.5, 1.5 / max(displayScale, 0.2))
         let area = dirtyRect.intersection(bounds)
         var y = (area.minY / step).rounded(.down) * step

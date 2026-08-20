@@ -103,6 +103,21 @@ struct PreferencesView: View {
                     ? "The default follows light and dark mode."
                     : "A chosen colour is used as it is, everywhere — light mode, dark mode, Overview's backdrop, exports and print.")
             }
+            section("Canvas") {
+                HStack(spacing: 10) {
+                    ColorPicker("", selection: canvasBackgroundColor, supportsOpacity: false)
+                        .labelsHidden()
+                    Text("Background of the board")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Reset to Default") { preferences.canvasBackgroundColorHex = nil }
+                        .disabled(preferences.canvasBackgroundColorHex == nil)
+                }
+                note(preferences.canvasBackgroundColorHex == nil
+                    ? "The default follows light and dark mode. The board is behind the cards on the canvas (⇧⌘K); it is never exported or printed."
+                    : "Used exactly as chosen, in both light and dark mode. The dot grid takes its own contrast from it, so it stays visible on a dark board as well as a pale one.")
+            }
             section("Overview blocks") {
                 HStack(spacing: 10) {
                     ColorPicker("", selection: groupOutlineColor, supportsOpacity: false)
@@ -198,6 +213,15 @@ struct PreferencesView: View {
                 return Color(nsColor: flat)
             },
             set: { preferences.emptyWellColorHex = NSColor($0).hexString }
+        )
+    }
+
+    /// The board's background is opaque, so unlike the empty-well swatch there is nothing
+    /// to flatten it against — what the picker shows is what the board paints.
+    private var canvasBackgroundColor: Binding<Color> {
+        Binding(
+            get: { Color(nsColor: preferences.canvasBackground) },
+            set: { preferences.canvasBackgroundColorHex = NSColor($0).hexString }
         )
     }
 

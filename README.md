@@ -281,6 +281,11 @@ well size and the fitting is measured rather than assumed. Both apply to the
 plate — wells, headers, the line key — and travel into exports and print. The
 window's own controls keep the system font, as a Mac app should.
 
+**Canvas** — the background of the board (`⇧⌘K`). The default follows light and dark
+mode; pick a colour and it is used exactly as chosen. The dot grid takes its own contrast
+from whatever you choose, so it stays visible on a dark board as well as a pale one. The
+board is never exported or printed, so this one is purely how you like to look at it.
+
 **Overview blocks** — the colour and thickness of the lines *Group identical wells*
 draws. The default colour follows light and dark mode; pick one and it is used as it
 is, on screen and on paper. Thickness is in points, from hairline to 4 pt, capped on a
