@@ -289,7 +289,13 @@ final class CanvasCardView: NSView {
     let kind: CanvasItem.Kind
 
     var title: String = "" { didSet { if title != oldValue { needsDisplay = true } } }
-    var isActive = false { didSet { if isActive != oldValue { needsDisplay = true } } }
+    var isActive = false {
+        didSet {
+            guard isActive != oldValue else { return }
+            applyBorder()
+            needsDisplay = true
+        }
+    }
     private(set) var isDragging = false
 
     var onCommitFrame: ((CGRect) -> Void)?
@@ -334,6 +340,29 @@ final class CanvasCardView: NSView {
         wantsLayer = true
         layer?.cornerRadius = Self.cornerRadius
         layer?.masksToBounds = true
+        applyBorder()
+    }
+
+    /// The outline is the **layer's** border, not a stroke in `draw`.
+    ///
+    /// A stroked path lost both halves of itself: the content view fills the body and
+    /// paints over everything inside the edge, and the rounded mask clips everything
+    /// outside it — so the line read as full thickness only along the title bar, thinner
+    /// down the sides, and vanished behind the plate at the bottom corners. A layer
+    /// border is drawn above the sublayers and entirely inside the bounds, on the very
+    /// radius the mask uses, so the outline and the shape it outlines cannot disagree.
+    private func applyBorder() {
+        layer?.borderWidth = isActive ? 2 : 1
+        // A CGColor is a resolved colour, so it has to be re-resolved whenever the
+        // appearance changes — unlike the NSColors everything else here draws with.
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.borderColor = (isActive ? NSColor.controlAccentColor : NSColor.separatorColor).cgColor
+        }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyBorder()
     }
 
     @available(*, unavailable)
@@ -421,9 +450,7 @@ final class CanvasCardView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let radius = Self.cornerRadius
-        let shape = NSBezierPath(
-            roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: radius, yRadius: radius
-        )
+        let shape = NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius)
         NSColor.textBackgroundColor.setFill()
         shape.fill()
 
@@ -445,12 +472,6 @@ final class CanvasCardView: NSView {
                 .paragraphStyle: style,
             ]
         )
-
-        // The active card is the one the keyboard and the brush are pointed at, so it
-        // says so in the accent colour rather than only in the plate tab bar.
-        (isActive ? NSColor.controlAccentColor : NSColor.separatorColor).setStroke()
-        shape.lineWidth = isActive ? 2 : 1
-        shape.stroke()
 
         // Close: takes the card off the board. A plate is only hidden by it — the plate
         // itself is untouched, and dragging its tab back brings the card back.

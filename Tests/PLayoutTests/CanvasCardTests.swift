@@ -207,4 +207,93 @@ final class CanvasCardTests: XCTestCase {
         editor.activePlateID = document.layout.plates[1].id
         XCTAssertFalse(first.isEditable, "editability is derived, so it cannot go stale")
     }
+
+    // MARK: - The outline round a card
+
+    /// Fills whatever it is given, the way a plate card's contents do.
+    private final class SolidContent: NSView {
+        override func draw(_ dirtyRect: NSRect) {
+            NSColor.magenta.setFill()
+            // Its own bounds, not the raw `dirtyRect`: AppKit sizes that to the whole
+            // damaged region, and filling it is what once painted white over the entire
+            // board. A card's real content is well behaved, so this one has to be too.
+            dirtyRect.intersection(bounds).fill()
+        }
+    }
+
+    private func chrome(active: Bool) -> CanvasCardView {
+        let card = CanvasCardView(itemID: UUID(), kind: .plate)
+        card.frame = NSRect(x: 0, y: 0, width: 200, height: 160)
+        card.content = SolidContent()
+        card.isActive = active
+        return card
+    }
+
+    private enum Edge { case top, bottom, left, right }
+
+    /// How many points of outline there are, walking in from one edge of a rendered card.
+    private func outlineThickness(_ card: CanvasCardView, from edge: Edge) throws -> CGFloat {
+        let rep = try XCTUnwrap(card.bitmapImageRepForCachingDisplay(in: card.bounds))
+        card.cacheDisplay(in: card.bounds, to: rep)
+        let scale = CGFloat(rep.pixelsWide) / card.bounds.width
+        // Mid-edge, so the sample is nowhere near a rounded corner or the close button.
+        func colour(_ step: Int) -> String {
+            let point: (x: Int, y: Int)
+            switch edge {
+            case .top: point = (rep.pixelsWide / 2, step)
+            case .bottom: point = (rep.pixelsWide / 2, rep.pixelsHigh - 1 - step)
+            case .left: point = (step, rep.pixelsHigh / 2)
+            case .right: point = (rep.pixelsWide - 1 - step, rep.pixelsHigh / 2)
+            }
+            guard let c = rep.colorAt(x: point.x, y: point.y)?.usingColorSpace(.sRGB) else { return "-" }
+            return "\(Int(c.redComponent * 255)),\(Int(c.greenComponent * 255)),\(Int(c.blueComponent * 255))"
+        }
+        let border = colour(0)
+        var run = 0
+        while run < rep.pixelsHigh / 2, colour(run) == border { run += 1 }
+        return CGFloat(run) / scale
+    }
+
+    /// The outline used to be stroked in `draw`, where the content view — which fills the
+    /// body — painted over its inner half and the rounded mask clipped its outer half. It
+    /// came out at one thickness along the title bar and a thinner one down the sides,
+    /// and vanished behind the plate at the bottom corners. Every edge, one thickness.
+    func testTheOutlineIsTheSameThicknessOnEveryEdge() throws {
+        let card = chrome(active: true)
+        for edge in [Edge.top, .bottom, .left, .right] {
+            XCTAssertEqual(try outlineThickness(card, from: edge), 2, "\(edge) edge")
+        }
+    }
+
+    /// Which only holds because the border is above the content rather than under it.
+    func testTheContentCannotCoverTheOutline() throws {
+        let card = chrome(active: true)
+        card.content = SolidContent()
+        XCTAssertEqual(try outlineThickness(card, from: .left), 2,
+                       "the content view painted over the inside of the outline")
+    }
+
+    /// It is the layer's border instead — above the sublayers, entirely inside the
+    /// bounds, and on the very radius the mask is cut with, so the outline and the shape
+    /// it outlines cannot disagree.
+    func testTheOutlineIsTheLayersBorderOnTheSameRadiusAsTheMask() {
+        let card = chrome(active: true)
+        XCTAssertEqual(card.layer?.borderWidth, 2)
+        XCTAssertEqual(card.layer?.cornerRadius, CanvasCardView.cornerRadius)
+        XCTAssertEqual(card.layer?.masksToBounds, true)
+
+        card.isActive = false
+        XCTAssertEqual(card.layer?.borderWidth, 1, "a quiet card still has an edge")
+    }
+
+    /// A `CGColor` is a resolved colour, unlike every `NSColor` the rest of the chrome
+    /// draws with, so it has to be re-resolved when the appearance changes.
+    func testTheOutlineFollowsLightAndDarkMode() throws {
+        let card = chrome(active: false)
+        card.appearance = NSAppearance(named: .aqua)
+        let light = try XCTUnwrap(card.layer?.borderColor)
+        card.appearance = NSAppearance(named: .darkAqua)
+        let dark = try XCTUnwrap(card.layer?.borderColor)
+        XCTAssertNotEqual(light, dark, "the border kept the colour it was first resolved in")
+    }
 }
