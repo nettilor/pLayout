@@ -180,6 +180,12 @@ struct PreferencesView: View {
                 }
                 note("Applies to the plate — wells, headers and the line key — and travels into exports and print. The window's own controls keep the system font.")
             }
+            section("Fitting") {
+                Toggle("One size per plate, fitted to the wells", isOn: $preferences.fitTextToWells)
+                    .toggleStyle(.checkbox)
+                    .font(.callout)
+                note("Every well on a plate is the same size, so normally the only thing that makes one label smaller than its neighbour is its own length — and the longest name is the one that ends up cut short. Fitted, the plate takes the largest size at which every name still fits, and uses it throughout. It only ever shrinks; the size above stays the ceiling.")
+            }
         }
     }
 

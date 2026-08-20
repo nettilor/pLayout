@@ -483,7 +483,20 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         }
         let hiddenFactorCount = stacked.isEmpty ? 0 : overflow.count - stripeFactors.count
 
-        let wellFontSize = max(7, min(geo.cell * 0.30, 13)) * CGFloat(Preferences.shared.canvasFontScale)
+        let baseWellFontSize = max(7, min(geo.cell * 0.30, 13))
+            * CGFloat(Preferences.shared.canvasFontScale)
+        // One size for every well on the plate, measured against every name it is going
+        // to draw. Skipped when there is no text to fit, and when the board has zoomed
+        // out far enough that the labels are not being drawn at all.
+        let fit = Preferences.shared.fitTextToWells && !coarse
+            ? Self.fitScale(plateLabels(
+                plate: plate, factor: factor, soloFactor: soloFactor, stacked: stacked,
+                showsSingleText: showSingleText, wellFontSize: baseWellFontSize,
+                geo: geo, plan: plan, stripeHeight: stripeHeight,
+                activeFactorID: editor.activeFactorID, armedLevelID: editor.armedLevelID
+              ))
+            : 1
+        let wellFontSize = baseWellFontSize * fit
         let customEmpty = Preferences.shared.customEmptyWellColor
         let emptyFill = Preferences.shared.emptyWellFill(exportMode: exportMode)
         // Every Overview well gets this same tile, so by default it is pitched a
@@ -553,7 +566,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
                         plan: plan, activeFactorID: editor.activeFactorID,
                         onColour: level.flatMap { NSColor(hex: $0.colorHex) },
                         reservedBottom: stripeHeight,
-                        style: textStyle, neutralInk: neutralInk, marker: markerStyle
+                        style: textStyle, neutralInk: neutralInk, marker: markerStyle, fit: fit
                     )
                 }
 
@@ -779,6 +792,129 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         Self.labelPlan(cell: cell, mode: mode, factorCount: factorCount)
     }
 
+    /// The room a stacked line's text gets inside a well body, past the inset, the
+    /// colour rail and the gap after it. One formula, so the fit measured before the
+    /// well loop and the drawing inside it cannot disagree about how much room there is.
+    static func stackTextWidth(bodyWidth: CGFloat) -> CGFloat {
+        let rail = max(2.5, min(5.5, bodyWidth * 0.09))
+        let inset = max(2.5, bodyWidth * 0.055)
+        return bodyWidth - inset * 2 - rail * 1.45 - max(2, rail * 0.75)
+    }
+
+    /// How much of a rect `drawFitted` really has for text, once its padding is off.
+    static func fittedWidth(of width: CGFloat, alignment: NSTextAlignment) -> CGFloat {
+        width - (alignment == .center ? max(2, width * 0.12) : 1)
+    }
+
+    /// One label a plate is going to draw, and the width it has to fit into.
+    struct FittedLabel: Equatable {
+        var text: String
+        var available: CGFloat
+        var size: CGFloat
+        var weight: NSFont.Weight = .medium
+    }
+
+    /// The largest fraction of the computed type size at which *every* one of these
+    /// labels fits the width it was given.
+    ///
+    /// One number for the whole plate, because every well on a plate is the same size:
+    /// the only thing that makes one label smaller than its neighbour is its own
+    /// length. Fitting each label on its own leaves the plate ragged and truncates
+    /// whichever name is longest; taking the minimum here shrinks them together and
+    /// truncates none of them.
+    ///
+    /// It never returns more than 1 — fitting makes text smaller, never larger than the
+    /// size the cell has earned — and no single label may pull a tier below
+    /// `minimumSize`, the same floor `drawFitted` gives up and truncates at. A name long
+    /// enough to need less than that pays for itself instead of the plate paying for it.
+    static func fitScale(
+        _ labels: [FittedLabel], minimumSize: CGFloat = 6,
+        font: (CGFloat, NSFont.Weight) -> NSFont = {
+            Preferences.shared.canvasFont(ofSize: $0, weight: $1)
+        }
+    ) -> CGFloat {
+        var scale: CGFloat = 1
+        for label in labels {
+            let trimmed = label.text.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty, label.available > 2, label.size > 0 else { continue }
+            func measure(at fraction: CGFloat) -> CGFloat {
+                (trimmed as NSString)
+                    .size(withAttributes: [.font: font(label.size * fraction, label.weight)]).width
+            }
+            guard measure(at: 1) > label.available else { continue }
+
+            let floor = min(1, minimumSize / label.size)
+            var fraction = max(floor, label.available / measure(at: 1))
+            // The ratio gets close, because width is nearly linear in point size — but
+            // only nearly, and a scale that only nearly fits would leave `drawFitted`
+            // shrinking this one label a further percent or two on its own. That is the
+            // ragged plate the whole option exists to avoid, so the gap is closed here
+            // by measuring, exactly as `drawFitted` closes its own.
+            var attempts = 0
+            while fraction > floor, measure(at: fraction) > label.available, attempts < 8 {
+                fraction = max(floor, fraction * min(0.98, label.available / measure(at: fraction)))
+                attempts += 1
+            }
+            scale = min(scale, fraction)
+        }
+        return scale
+    }
+
+    /// Every label this plate is going to draw, with the width it has to fit into.
+    ///
+    /// One entry per distinct name rather than one per well — every well is the same
+    /// size, so a name that fits in one fits in all of them — which is also what keeps
+    /// this affordable on every frame of a drag. Names defined but never painted are
+    /// left out: a condition sitting unused in the sidebar should not shrink the plate.
+    private func plateLabels(
+        plate: Plate, factor: Factor?, soloFactor: Factor?, stacked: [Factor],
+        showsSingleText: Bool, wellFontSize: CGFloat, geo: PlateGeometry,
+        plan: LabelPlan, stripeHeight: CGFloat, activeFactorID: UUID?, armedLevelID: UUID?
+    ) -> [FittedLabel] {
+        // Every cell is identical, so the first one stands for all of them.
+        let body = wellBody(
+            in: geo.cellRect(row: 0, col: 0),
+            stripeHeight: stacked.isEmpty ? stripeHeight : 0, square: stacked.isEmpty
+        )
+        var labels: [FittedLabel] = []
+
+        if showsSingleText, let single = soloFactor ?? factor {
+            let available = Self.fittedWidth(of: body.width, alignment: .center)
+            for name in names(of: single, painted: plate, armed: armedLevelID) {
+                labels.append(
+                    FittedLabel(text: name, available: available, size: wellFontSize)
+                )
+            }
+        }
+        if !stacked.isEmpty {
+            let available = Self.stackTextWidth(bodyWidth: body.width)
+            for line in stacked {
+                // The factor being painted takes the headline tier, so it is measured
+                // at the size and weight it is actually drawn at.
+                let primary = !plan.uniform && line.id == activeFactorID
+                for name in names(of: line, painted: plate, armed: armedLevelID) {
+                    labels.append(FittedLabel(
+                        text: name, available: available,
+                        size: primary ? plan.primarySize : plan.secondarySize,
+                        weight: primary ? .semibold : .regular
+                    ))
+                }
+            }
+        }
+        return labels
+    }
+
+    /// The distinct condition names of `factor` that appear somewhere on the plate,
+    /// plus the armed one — a paint stroke puts that down before the model has it, and
+    /// the size must not jump when the stroke lands.
+    private func names(of factor: Factor, painted plate: Plate, armed: UUID?) -> [String] {
+        var used = Set(plate.assignments[factor.id.uuidString]?.compactMap { $0 } ?? [])
+        if let armed, factor.levels.contains(where: { $0.id == armed }) {
+            used.insert(armed.uuidString)
+        }
+        return factor.levels.filter { used.contains($0.id.uuidString) }.map(\.name)
+    }
+
     /// Every canvas font routes through the shared factory, so the family setting
     /// cannot miss a label — see Preferences.canvasFont.
     private func canvasFont(ofSize size: CGFloat, weight: NSFont.Weight) -> NSFont {
@@ -801,7 +937,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     private func drawFactorStack(
         in bodyRect: CGRect, factors: [Factor], plate: Plate, index: Int,
         plan: LabelPlan, activeFactorID: UUID?, onColour: NSColor?, reservedBottom: CGFloat,
-        style: WellTextStyle, neutralInk: NSColor, marker: ActiveMarkerStyle
+        style: WellTextStyle, neutralInk: NSColor, marker: ActiveMarkerStyle, fit: CGFloat
     ) {
         let lineCount = min(plan.lineCount, factors.count)
         guard lineCount >= 1 else { return }
@@ -899,9 +1035,9 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
 
                 let textRect = CGRect(
                     x: textStart, y: y,
-                    width: bodyRect.maxX - inset - textStart, height: height
+                    width: Self.stackTextWidth(bodyWidth: bodyRect.width), height: height
                 )
-                let size = isPrimary ? plan.primarySize : plan.secondarySize
+                let size = (isPrimary ? plan.primarySize : plan.secondarySize) * fit
                 drawFitted(
                     level.name, in: textRect, maxFontSize: size, minFontSize: size * 0.85,
                     weight: isPrimary ? .semibold : .regular, alignment: .left,
@@ -1191,8 +1327,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     ) {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty, rect.width > 8 else { return }
-        let padding: CGFloat = alignment == .center ? max(2, rect.width * 0.12) : 1
-        let available = rect.width - padding
+        let available = Self.fittedWidth(of: rect.width, alignment: alignment)
         guard available > 2 else { return }
         // A floor per tier keeps an inactive label from shrinking past the active one
         // and inverting the visual hierarchy.

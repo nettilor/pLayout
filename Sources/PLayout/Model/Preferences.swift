@@ -279,6 +279,19 @@ final class Preferences: ObservableObject {
         }
     }
 
+    /// Whether a plate picks one type size for all of its wells — the largest at which
+    /// the longest name still fits — instead of shrinking each label on its own.
+    ///
+    /// Off by default: it changes how every existing document looks, and the per-label
+    /// fit is what the app has always done. On, it only ever shrinks; the size above is
+    /// still the ceiling.
+    @Published var fitTextToWells: Bool {
+        didSet {
+            guard fitTextToWells != oldValue else { return }
+            defaults.set(fitTextToWells, forKey: Self.fitTextToWellsKey)
+        }
+    }
+
     /// Whether each factor row in the sidebar carries its number of conditions at the
     /// trailing edge, the way condition rows carry their well count. Off by default:
     /// the count is one click away, and the sidebar earns its calm.
@@ -369,6 +382,7 @@ final class Preferences: ObservableObject {
     private static let groupOutlineThicknessKey = "groupOutlineThickness"
     private static let canvasFontFamilyKey = "canvasFontFamily"
     private static let canvasFontScaleKey = "canvasFontScale"
+    private static let fitTextToWellsKey = "fitTextToWells"
     private static let factorConditionCountsKey = "showFactorConditionCounts"
     private static let checkForUpdatesKey = "checkForUpdatesAutomatically"
 
@@ -402,6 +416,7 @@ final class Preferences: ObservableObject {
             .flatMap { $0.isEmpty ? nil : $0 }
         let storedScale = defaults.object(forKey: Self.canvasFontScaleKey) as? Double ?? 1.0
         canvasFontScale = min(max(storedScale, 0.7), 1.8)
+        fitTextToWells = defaults.object(forKey: Self.fitTextToWellsKey) as? Bool ?? false
         showFactorConditionCounts = defaults.object(forKey: Self.factorConditionCountsKey) as? Bool ?? false
         checkForUpdatesAutomatically = defaults.object(forKey: Self.checkForUpdatesKey) as? Bool ?? true
     }
@@ -417,6 +432,7 @@ final class Preferences: ObservableObject {
         groupOutlineThickness = Self.defaultGroupOutlineThickness
         canvasFontFamily = nil
         canvasFontScale = 1.0
+        fitTextToWells = false
         showFactorConditionCounts = false
         checkForUpdatesAutomatically = true
     }

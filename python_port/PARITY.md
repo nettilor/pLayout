@@ -71,6 +71,7 @@ Mac `ShortcutsCard`, the README table, the menu item **and this file** in the sa
 | Settings window in tabs | ✅ | M6 | |
 | Canvas board background colour | ⏳ | — | 1.5; dot grid takes its contrast from it |
 | Overview block outline colour and thickness | ⏳ | — | 1.5; default colour follows light/dark, thickness capped at a quarter of the cell |
+| One size per plate, fitted to the wells | ⏳ | — | 1.5; a second multiplier over the plan, measured against every painted name; closes its own fit loop and floors at 6 pt |
 
 ## App and distribution
 

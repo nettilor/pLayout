@@ -281,6 +281,16 @@ well size and the fitting is measured rather than assumed. Both apply to the
 plate — wells, headers, the line key — and travel into exports and print. The
 window's own controls keep the system font, as a Mac app should.
 
+**One size per plate, fitted to the wells** — off by default. Every well on a plate is
+the same size, so the only thing that normally makes one label smaller than its
+neighbour is its own length, and the longest name is the one that ends up cut short.
+Fitted, the plate measures every name it is going to draw and takes the largest size at
+which all of them fit, then uses it throughout — so the plate reads as one design rather
+than four type sizes. It only ever shrinks, never grows past the size set above, and it
+stops at the same 6 pt floor the per-label fitting has always truncated at: a name long
+enough to need less than that is cut short on its own rather than taking the plate down
+with it.
+
 **Canvas** — the background of the board (`⇧⌘K`). The default follows light and dark
 mode; pick a colour and it is used exactly as chosen. The dot grid takes its own contrast
 from whatever you choose, so it stays visible on a dark board as well as a pale one. The
@@ -503,6 +513,11 @@ Two invariants are worth knowing before changing the drawing code:
 - **Label sizes are continuous functions of the cell size.** Any step — even
   rounding — can make the number of label lines drop as the window grows, which
   reads as labels randomly disappearing. `LabelPlanTests` pins this down.
+- **Fitting text to the wells is a multiplier, measured once per plate.** It scales
+  the type the plan already decided on and leaves the plan itself — line count, line
+  heights, the stack's position — exactly as it was, so a horizontal fit can never
+  cost a label line. `TextFittingTests` pins the measurement and checks it reaches a
+  well whose own label had room to spare.
 - **A card on the canvas is a real `PlateCanvasView`, pinned to one plate.** That is what
   keeps the board honest: AppKit converts a click through the board's pan and
   magnification before the card ever sees it, so `PlateGeometry` works in the card's own
