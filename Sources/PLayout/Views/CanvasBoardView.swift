@@ -72,9 +72,15 @@ final class CanvasBoardView: NSView {
             cards.removeValue(forKey: id)
         }
 
-        // Array order is z-order.
+        // Array order is z-order, and the plate being edited is always on top of it.
+        // Raised here rather than on the press itself: a click has to bring a card
+        // forward, but writing the document mid-press is what cancelled drags.
         for item in items {
             if let card = cards[item.id] { addSubview(card, positioned: .above, relativeTo: nil) }
+        }
+        if let active = items.first(where: { $0.kind == .plate && $0.plateID == editor.activePlateID }),
+           let card = cards[active.id] {
+            addSubview(card, positioned: .above, relativeTo: nil)
         }
 
         applyExtent()

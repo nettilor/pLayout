@@ -130,14 +130,21 @@ final class CanvasCardTests: XCTestCase {
     }
 
     /// `PlateGeometry` centres the plate, so a card whose aspect does not match has inner
-    /// margins — and a click there used to clear the *active* plate's selection.
-    func testClickingAReadOnlyCardsMarginDoesNotClearTheSelection() {
+    /// margins — and a click there used to clear the *active* plate's selection outright.
+    /// Now it activates that card's plate, and each plate keeps its own selection, so the
+    /// one you left is still there when you come back.
+    func testClickingAReadOnlyCardsMarginActivatesItAndKeepsTheOtherPlatesSelection() {
         editor.select(WellRange(anchor: WellPos(row: 1, col: 1), focus: WellPos(row: 3, col: 4)))
         let before = editor.selection
 
         let second = card(for: 1, size: NSSize(width: 900, height: 200))
         click(second, at: CGPoint(x: 4, y: 100))
-        XCTAssertEqual(editor.selection, before)
+
+        XCTAssertEqual(editor.activePlateID, document.layout.plates[1].id)
+        XCTAssertNotEqual(editor.selection, before, "the second plate has its own selection")
+
+        editor.activePlateID = document.layout.plates[0].id
+        XCTAssertEqual(editor.selection, before, "and the first plate's is still where it was")
     }
 
     func testClickingAReadOnlyCardsCornerDoesNotTurnEveryPlate() {

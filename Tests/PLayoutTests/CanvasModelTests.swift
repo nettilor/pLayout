@@ -149,6 +149,51 @@ final class CanvasModelTests: XCTestCase {
         XCTAssertEqual(restored?.frame.y, 900, "undo puts the plate and its place back together")
     }
 
+    // MARK: - Each plate keeps its own selection
+
+    /// The board shows several plates at once, so a selection that followed you from
+    /// plate to plate read as every plate sharing one.
+    func testEachPlateKeepsItsOwnSelection() {
+        let (document, editor) = multiPlate()
+        let first = document.layout.plates[0].id
+        let second = document.layout.plates[1].id
+
+        editor.activePlateID = first
+        editor.select(WellRange(anchor: WellPos(row: 2, col: 2), focus: WellPos(row: 4, col: 5)))
+
+        editor.activePlateID = second
+        XCTAssertEqual(
+            editor.selection, WellRange(single: WellPos(row: 0, col: 0)),
+            "a plate you have not touched starts at A1, not wherever you were on another"
+        )
+
+        editor.select(WellRange(single: WellPos(row: 7, col: 9)))
+        editor.activePlateID = first
+        XCTAssertEqual(editor.selection?.minRow, 2, "the first plate's selection came back")
+        XCTAssertEqual(editor.selection?.maxCol, 5)
+
+        editor.activePlateID = second
+        XCTAssertEqual(editor.selection, WellRange(single: WellPos(row: 7, col: 9)))
+    }
+
+    /// A ⌘-click selection belongs to its plate too.
+    func testADiscontiguousSelectionIsAlsoPerPlate() {
+        let (document, editor) = multiPlate()
+        let first = document.layout.plates[0].id
+        editor.activePlateID = first
+        // ⌘-click adds to what is already selected, and a plate opens with A1 selected,
+        // so this is A1 plus the two toggled wells.
+        editor.toggleWell(WellPos(row: 1, col: 1))
+        editor.toggleWell(WellPos(row: 3, col: 3))
+        XCTAssertEqual(editor.customWells?.count, 3)
+
+        editor.activePlateID = document.layout.plates[1].id
+        XCTAssertNil(editor.customWells, "the other plate has no ⌘-click selection of its own")
+
+        editor.activePlateID = first
+        XCTAssertEqual(editor.customWells?.count, 3)
+    }
+
     // MARK: - Notes
 
     func testANoteIsAddedEditedAndEmptiedAway() {

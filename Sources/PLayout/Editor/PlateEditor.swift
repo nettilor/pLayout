@@ -77,6 +77,15 @@ final class PlateEditor: ObservableObject {
     /// Set when the design matches a saved state, which fills in the bookmark icon.
     @Published private(set) var matchingSavedStateID: UUID?
 
+    /// Each plate keeps its own selection while the document is open.
+    ///
+    /// `selection` and `customWells` are the *active* plate's, so every existing call site
+    /// is unchanged; these are the others', parked until you come back to them. Transient
+    /// on purpose — where the cursor happens to be is not part of the experiment, so it
+    /// does not belong in the file.
+    private var parkedSelections: [UUID: (range: WellRange?, custom: Set<WellPos>?)] = [:]
+    private var lastActivePlateID: UUID?
+
     private var cancellables = Set<AnyCancellable>()
     private var messageResetWork: DispatchWorkItem?
     /// What Overview stepped away from, so leaving it puts the brush back where it
@@ -117,10 +126,12 @@ final class PlateEditor: ObservableObject {
         // A state bookmarks one plate, so the filled bookmark changes when the plate
         // does even though the document has not. `@Published` fires during `willSet`,
         // so the incoming id is used rather than the property.
+        lastActivePlateID = activePlateID
         $activePlateID
             .sink { [weak self] id in
                 guard let self else { return }
                 self.refreshSavedStateMatch(in: self.layout, plate: id)
+                self.swapSelection(to: id)
             }
             .store(in: &cancellables)
     }
@@ -129,6 +140,25 @@ final class PlateEditor: ObservableObject {
         // The controller holds the editor unowned, so a window still on screen when the
         // document goes would be pointing at nothing.
         prepWindow?.close()
+    }
+
+    /// Parks the selection with the plate being left and restores the one belonging to
+    /// the plate being entered. Without this the selection follows you from plate to
+    /// plate, which on the board reads as every plate sharing one selection.
+    private func swapSelection(to id: UUID?) {
+        guard lastActivePlateID != id else { return }
+        if let previous = lastActivePlateID {
+            parkedSelections[previous] = (selection, customWells)
+        }
+        lastActivePlateID = id
+        guard let id else { return }
+        if let parked = parkedSelections[id] {
+            selection = parked.range
+            customWells = parked.custom
+        } else {
+            selection = WellRange(single: WellPos(row: 0, col: 0))
+            customWells = nil
+        }
     }
 
     // MARK: - Derived state
