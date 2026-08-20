@@ -281,6 +281,19 @@ struct Plate: Identifiable, Codable, Hashable {
         orientation = try? container.decodeIfPresent(PlateOrientation.self, forKey: .orientation)
     }
 
+    /// This plate's *design* — everything about it except how you are looking at it.
+    ///
+    /// Orientation is display taste, the same reason the board's layout was deliberately
+    /// kept off `Plate`. Compared and restored as part of the plate, turning a plate and
+    /// turning it straight again emptied the saved-state bookmark for good — the picture
+    /// was identical, a field the user cannot see was not — and reverting to a state
+    /// silently turned the plate you were looking at.
+    var design: Plate {
+        var copy = self
+        copy.orientation = nil
+        return copy
+    }
+
     func note(well: Int) -> String? {
         guard let text = wellNotes[String(well)], !text.isEmpty else { return nil }
         return text
@@ -836,16 +849,25 @@ struct Layout: Codable, Hashable {
         guard let snapshot = snapshots.first(where: { $0.id == id }) else { return false }
         reinstateFactors(from: snapshot)
 
+        // Reverting restores the design, never the orientation: how you are looking at
+        // the plate is not part of what was saved.
+        func keepingOrientation(of existing: Plate?, _ saved: Plate) -> Plate {
+            var restored = saved
+            restored.orientation = existing?.orientation
+            return restored
+        }
         guard let plateID = snapshot.plateID else {
             // Written before states were per-plate, so it still means the whole document.
-            plates = snapshot.plates
+            plates = snapshot.plates.map { saved in
+                keepingOrientation(of: plates.first { $0.id == saved.id }, saved)
+            }
             return true
         }
         guard let saved = snapshot.plates.first(where: { $0.id == plateID }) else { return false }
         if let index = plates.firstIndex(where: { $0.id == plateID }) {
-            plates[index] = saved
+            plates[index] = keepingOrientation(of: plates[index], saved)
         } else {
-            plates.append(saved)
+            plates.append(keepingOrientation(of: nil, saved))
         }
         return true
     }
@@ -887,7 +909,7 @@ struct Layout: Codable, Hashable {
     /// whose layout has not moved at all.
     func snapshotMatching(plate plateID: UUID?) -> LayoutSnapshot? {
         guard let plateID, let plate = plates.first(where: { $0.id == plateID }) else { return nil }
-        return snapshots.last { $0.plateID == plateID && $0.plates.first == plate }
+        return snapshots.last { $0.plateID == plateID && $0.plates.first?.design == plate.design }
     }
 
     /// Unique factor name so exported spreadsheet columns never collide.

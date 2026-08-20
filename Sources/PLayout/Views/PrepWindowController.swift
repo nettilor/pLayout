@@ -71,14 +71,23 @@ final class PrepWindowController: NSWindowController, NSWindowDelegate {
         // places — `idealWidth` on the view and an explicit content size here.
         window.setContentSize(NSSize(width: 660, height: 760))
         // Set last, so it restores a saved frame *over* that default rather than being
-        // overwritten by it.
-        window.setFrameAutosaveName("PipettingPrepWindow")
+        // overwritten by it. Per document, because AppKit refuses a name a live window
+        // already holds: with one shared name a second document's prep window silently
+        // took no frame at all and opened exactly on top of the first.
+        window.setFrameAutosaveName("PipettingPrepWindow-\(editor.documentIdentity)")
         super.init(window: window)
         window.delegate = self
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    /// The window is built when the sheet is first opened, which for a new document is
+    /// often before it has ever been saved — so the title has to be refreshed rather
+    /// than fixed at birth, or it says "Untitled" for the rest of the session.
+    func refreshTitle(_ title: String) {
+        window?.title = "Prep — \(title)"
+    }
 
     func windowDidBecomeKey(_ notification: Notification) {
         guard let editor else { return }

@@ -198,12 +198,13 @@ final class CanvasModelTests: XCTestCase {
 
     func testANoteIsAddedEditedAndEmptiedAway() {
         let (document, editor) = multiPlate()
-        editor.addCanvasNote(at: CGPoint(x: 100, y: 100))
+        let point = CGPoint(x: 100, y: 100)
+        editor.addCanvasNote(at: point)
+        XCTAssertEqual(editor.noteTarget, .newCanvasNote(point), "asking for one opens it for typing")
+
+        editor.saveNote("thaw cells first", for: .newCanvasNote(point))
         let note = try? XCTUnwrap(document.layout.canvas?.items.last)
         XCTAssertEqual(note?.kind, .note)
-        XCTAssertEqual(editor.noteTarget, .canvasNote(note!.id), "adding one opens it for typing")
-
-        editor.saveNote("thaw cells first", for: .canvasNote(note!.id))
         XCTAssertEqual(document.layout.canvas?.items.last?.text, "thaw cells first")
 
         // An emptied sticky note is a removed one, exactly as an emptied well note is.
@@ -274,6 +275,7 @@ final class CanvasModelTests: XCTestCase {
         XCTAssertFalse(editor.canvasItems.contains { $0.plateID == plateID })
 
         editor.addCanvasNote(at: CGPoint(x: 40, y: 40))
+        editor.saveNote("note", for: .newCanvasNote(CGPoint(x: 40, y: 40)))
         XCTAssertFalse(editor.canvasItems.contains { $0.plateID == plateID },
                        "adding a note brought a closed card back")
         XCTAssertEqual(document.layout.canvas?.dismissedPlates, [plateID])
@@ -291,6 +293,45 @@ final class CanvasModelTests: XCTestCase {
         editor.bringCanvasItemToFront(other.id)
         XCTAssertFalse(editor.canvasItems.contains { $0.plateID == plateID },
                        "raising a card brought a closed card back")
+    }
+
+    /// Asking for a note and then cancelling must leave no trace. Creating the note up
+    /// front left a blank sticky behind on Escape — and, because writing the board freezes
+    /// every auto-placed card where it happens to be, that cancelled gesture also froze
+    /// the whole arrangement into a document that autosaves in place.
+    func testAskingForANoteAndCancellingChangesNothing() {
+        let (document, editor) = multiPlate()
+        let undo = UndoManager()
+        editor.undoManager = undo
+
+        editor.addCanvasNote(at: CGPoint(x: 40, y: 40))
+        XCTAssertEqual(editor.noteTarget, .newCanvasNote(CGPoint(x: 40, y: 40)))
+        XCTAssertNil(document.layout.canvas, "nothing is written until something is typed")
+        XCTAssertFalse(undo.canUndo)
+
+        // Cancelling is the sheet simply going away; saving it empty is the same thing.
+        editor.saveNote("   ", for: .newCanvasNote(CGPoint(x: 40, y: 40)))
+        XCTAssertNil(document.layout.canvas)
+        XCTAssertFalse(editor.canvasItems.contains { $0.kind == .note })
+    }
+
+    /// And writing one is a single undo step, not an empty note followed by its text.
+    func testWritingANoteIsOneStep() {
+        let (document, editor) = multiPlate()
+        let undo = UndoManager()
+        editor.undoManager = undo
+
+        editor.addCanvasNote(at: CGPoint(x: 60, y: 80))
+        editor.saveNote("seed 5k", for: .newCanvasNote(CGPoint(x: 60, y: 80)))
+
+        let note = editor.canvasItems.first { $0.kind == .note }
+        XCTAssertEqual(note?.text, "seed 5k")
+        XCTAssertEqual(note?.frame.x, 60)
+
+        undo.undo()
+        XCTAssertFalse(editor.canvasItems.contains { $0.kind == .note },
+                       "one undo should take the note away, not leave an empty one")
+        XCTAssertNil(document.layout.canvas)
     }
 
     /// Closing the card of the plate you are editing has to hand editing to a card that
@@ -331,6 +372,7 @@ final class CanvasModelTests: XCTestCase {
         editor.closeCanvasItem(prep.id)
 
         editor.addCanvasNote(at: CGPoint(x: 40, y: 40))
+        editor.saveNote("note", for: .newCanvasNote(CGPoint(x: 40, y: 40)))
         XCTAssertFalse(editor.canvasItems.contains { $0.kind == .prep },
                        "adding a note brought the prep card back")
         XCTAssertEqual(document.layout.canvas?.hidesPrep, true)
@@ -361,6 +403,41 @@ final class CanvasModelTests: XCTestCase {
     }
 
     // MARK: - Turning one plate
+
+    /// Orientation is how you are looking at a plate, not part of its design — the same
+    /// reason the board's layout was kept off `Plate`. Riding inside the snapshot, it
+    /// emptied the saved-state bookmark for a picture that had not changed.
+    func testTurningAPlateAndTurningItBackKeepsTheSavedStateMatch() {
+        let (document, editor) = multiPlate()
+        editor.activePlateID = document.layout.plates[0].id
+        editor.saveState()
+        XCTAssertNotNil(editor.matchingSavedStateID, "the design should match the state just saved")
+
+        editor.rotatePlate()
+        editor.rotatePlate()
+
+        XCTAssertNil(document.layout.plates[0].orientation,
+                     "back where it started, so it follows the document again")
+        XCTAssertNotNil(editor.matchingSavedStateID,
+                        "the picture is identical, so the bookmark must still be filled")
+    }
+
+    /// And a state that *is* saved while turned must not turn the plate back when
+    /// reverted: reverting restores the design, never how you are looking at it.
+    func testRevertingAStateDoesNotTurnThePlate() throws {
+        let (document, editor) = multiPlate()
+        editor.activePlateID = document.layout.plates[0].id
+        editor.saveState()
+        let state = try XCTUnwrap(document.layout.snapshots.last).id
+
+        editor.rotatePlate()
+        XCTAssertEqual(document.layout.plates[0].orientation, .turned)
+
+        XCTAssertTrue(document.layout.restoreSnapshot(state))
+        XCTAssertEqual(document.layout.plates[0].orientation, .turned,
+                       "reverting changed how the plate is drawn")
+    }
+
 
     /// The board shows several plates at once, so standing a tall one on its end must not
     /// lie the 96-well beside it down as well.

@@ -28,12 +28,15 @@ enum PrepWarning: Equatable {
     case belowPipetteMinimum(tube: String, volume: Double, minimum: Double)
     case solventInWell(top: Double, bottom: Double)
     case notSerial(NotSerialReason)
+    /// The sheet was scoped to one plate and that plate is no longer in the document.
+    case scopedPlateMissing
 
     var severity: Severity {
         switch self {
         case .addedVolumeExceedsWell, .unitsNotComparable, .stockTooWeak:
             return .error
-        case .noStock, .belowPipetteMinimum, .unitAssumed, .nonNumericDose:
+        case .noStock, .belowPipetteMinimum, .unitAssumed, .nonNumericDose,
+             .scopedPlateMissing:
             return .caution
         case .noWells, .stockUsedNeat, .solventInWell, .notSerial:
             return .note
@@ -87,6 +90,9 @@ enum PrepWarning: Equatable {
                 return "The doses are not a constant fold series, so each tube is made "
                     + "straight from the stock rather than from the one above it."
             }
+        case .scopedPlateMissing:
+            return "This sheet was set to one plate, and that plate is no longer in the "
+                + "document — the volumes below cover every plate instead."
         }
     }
 }
@@ -207,15 +213,24 @@ extension DilutionPlan {
     static func make(from layout: Layout, setup: PrepSetup) -> DilutionPlan? {
         guard let doseFactor = layout.factor(id: setup.doseFactorID) else { return nil }
 
-        let plates = setup.plateID.flatMap { id in
+        let scoped = setup.plateID.flatMap { id in
             layout.plates.first { $0.id == id }.map { [$0] }
-        } ?? layout.plates
+        }
+        let plates = scoped ?? layout.plates
         let compoundFactor = layout.factor(id: setup.compoundFactorID)
 
         var plan = DilutionPlan(
             compounds: [], setup: setup, doseFactorName: doseFactor.name,
             doseUnit: doseFactor.unit, scopeText: scopeText(layout: layout, setup: setup)
         )
+
+        // Deleting the plate a sheet was scoped to silently widened it to every plate,
+        // and every tube volume changed with it. The scope is still stored — undoing the
+        // deletion brings it back — but a sheet printed in between must say so rather
+        // than quietly describing a different experiment.
+        if setup.plateID != nil, scoped == nil {
+            plan.warnings.append(.scopedPlateMissing)
+        }
 
         // An input error, not something to work around: refuse rather than print tubes
         // that cannot be made.

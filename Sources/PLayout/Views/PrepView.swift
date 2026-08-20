@@ -38,7 +38,7 @@ struct PrepView: View {
         VStack(alignment: .leading, spacing: 14) {
             section("What is being made") {
                 labelled("Doses") {
-                    Picker("", selection: field(\.doseFactorID, "Prep Dose Factor")) {
+                    Picker("", selection: doseFactorSelection) {
                         Text("None").tag(UUID?.none)
                         ForEach(editor.layout.factors) { factor in
                             Text(factor.displayName).tag(UUID?.some(factor.id))
@@ -57,7 +57,7 @@ struct PrepView: View {
                 }
                 if editor.layout.plates.count > 1 {
                     labelled("Plates") {
-                        Picker("", selection: field(\.plateID, "Prep Plate Scope")) {
+                        Picker("", selection: plateScopeSelection) {
                             Text("All plates").tag(UUID?.none)
                             ForEach(editor.layout.plates) { plate in
                                 Text(plate.name).tag(UUID?.some(plate.id))
@@ -188,14 +188,16 @@ struct PrepView: View {
                         .foregroundStyle(.secondary)
                 }
                 ForEach(compounds.levels) { level in
-                    stockRow(
+                    StockRow(
                         name: level.name, colorHex: level.colorHex, stock: level.stock,
+                        defaultUnit: defaultStockUnit,
                         set: { editor.setStock($0, for: level.id, in: compounds.id) }
                     )
                 }
             } else {
-                stockRow(
+                StockRow(
                     name: "All wells", colorHex: nil, stock: setup.stock,
+                    defaultUnit: defaultStockUnit,
                     // Filtered exactly as `setStock` filters a compound's: a unit typed
                     // before a number is not a stock, and storing `0 mM` put "stock 0 mM"
                     // in the workbook where the window and the printout both say "no
@@ -212,44 +214,71 @@ struct PrepView: View {
         .padding(.vertical, 10)
     }
 
-    private func stockRow(
-        name: String, colorHex: String?, stock: StockConcentration?,
-        set: @escaping (StockConcentration?) -> Void
-    ) -> some View {
-        HStack(spacing: 8) {
-            if let colorHex {
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(Color(nsColor: NSColor(hex: colorHex) ?? .gray))
-                    .frame(width: 11, height: 11)
+    /// One condition's stock.
+    ///
+    /// A `View` rather than a function so the unit has somewhere of its own to live.
+    /// Clearing the number clears the whole `StockConcentration` in the model — "not
+    /// set" is one state, not a value and a unit that can be half-present — so with
+    /// nowhere else to keep it the unit went with the number, and the next figure typed
+    /// silently fell back to the dose factor's unit. Correcting a 10 mM stock to 5 the
+    /// ordinary way (select, delete, type 5) stored **5 µM**: a thousandfold error on a
+    /// printed sheet, with nothing anywhere to warn you. It also means a unit typed
+    /// before a number survives, where before it was dropped on the floor.
+    private struct StockRow: View {
+        let name: String
+        let colorHex: String?
+        let stock: StockConcentration?
+        let defaultUnit: String
+        let set: (StockConcentration?) -> Void
+
+        @State private var unit: String = ""
+
+        private var effectiveUnit: String { unit.isEmpty ? defaultUnit : unit }
+
+        var body: some View {
+            HStack(spacing: 8) {
+                if let colorHex {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color(nsColor: NSColor(hex: colorHex) ?? .gray))
+                        .frame(width: 11, height: 11)
+                }
+                Text(name)
+                    .frame(width: 130, alignment: .leading)
+                    .lineLimit(1)
+                // An optional binding, so a compound with no stock shows an empty field
+                // rather than a zero — "not set" and "zero" are different things here,
+                // and the vehicle condition is legitimately the former.
+                TextField(
+                    "—",
+                    value: Binding<Double?>(
+                        get: { stock?.isUsable == true ? stock?.value : nil },
+                        set: { value in
+                            guard let value else { return set(nil) }
+                            set(StockConcentration(value: value, unit: effectiveUnit))
+                        }
+                    ),
+                    format: .number
+                )
+                .frame(width: 70)
+                CommitTextField(
+                    placeholder: defaultUnit.isEmpty ? "mM" : defaultUnit,
+                    text: unit, font: .body, allowsEmpty: true
+                ) { typed in
+                    unit = typed
+                    set(StockConcentration(value: stock?.value ?? 0, unit: typed))
+                }
+                .frame(width: 80)
+                Spacer(minLength: 0)
             }
-            Text(name)
-                .frame(width: 130, alignment: .leading)
-                .lineLimit(1)
-            // An optional binding, so a compound with no stock shows an empty field
-            // rather than a zero — "not set" and "zero" are different things here, and
-            // the vehicle condition is legitimately the former.
-            TextField(
-                "—",
-                value: Binding<Double?>(
-                    get: { stock?.isUsable == true ? stock?.value : nil },
-                    set: { value in
-                        guard let value else { return set(nil) }
-                        set(StockConcentration(value: value, unit: stock?.unit ?? defaultStockUnit))
-                    }
-                ),
-                format: .number
-            )
-            .frame(width: 70)
-            CommitTextField(
-                placeholder: defaultStockUnit.isEmpty ? "mM" : defaultStockUnit,
-                text: stock?.unit ?? "", font: .body, allowsEmpty: true
-            ) { unit in
-                set(StockConcentration(value: stock?.value ?? 0, unit: unit))
+            .font(.callout)
+            .onAppear { unit = stock?.unit ?? "" }
+            // The model still wins when it changes underneath — an undo, or a stock
+            // arriving with a pasted compound. A stock cleared to nil deliberately does
+            // *not* clear the unit: that is the whole point of keeping it here.
+            .onChange(of: stock?.unit) { _, new in
+                if let new, new != unit { unit = new }
             }
-            .frame(width: 80)
-            Spacer(minLength: 0)
         }
-        .font(.callout)
     }
 
     /// The dose factor's own unit is the likeliest answer, and it makes the common case
@@ -312,6 +341,37 @@ struct PrepView: View {
 
     /// Every field writes through `updatePrep`, so each change is one ordinary undo step
     /// and the setup is created in the document the first time something is actually set.
+    /// Choosing the factor that is currently the *compound* factor clears that in the
+    /// same edit. Without it `compoundFactorID` kept pointing at a factor the Compounds
+    /// picker filters out, so the control rendered blank and could not be cleared — and
+    /// the plan cross-tabbed the factor against itself, giving every condition its own
+    /// one-tube "compound".
+    private var doseFactorSelection: Binding<UUID?> {
+        Binding(
+            get: { editor.effectivePrepSetup.doseFactorID },
+            set: { value in
+                editor.updatePrep("Prep Dose Factor") {
+                    $0.doseFactorID = value
+                    if let value, $0.compoundFactorID == value { $0.compoundFactorID = nil }
+                }
+            }
+        )
+    }
+
+    /// A scope pointing at a plate that has been deleted matches no tag, so the picker
+    /// renders blank and cannot be changed. It reads as "All plates" — which is what the
+    /// sheet is actually showing — while leaving the stored id alone, so undoing the
+    /// deletion still brings the scope back.
+    private var plateScopeSelection: Binding<UUID?> {
+        Binding(
+            get: {
+                let id = editor.effectivePrepSetup.plateID
+                return editor.layout.plates.contains { $0.id == id } ? id : nil
+            },
+            set: { value in editor.updatePrep("Prep Plate Scope") { $0.plateID = value } }
+        )
+    }
+
     private func field<T>(
         _ keyPath: WritableKeyPath<PrepSetup, T>, _ actionName: String
     ) -> Binding<T> {

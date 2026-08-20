@@ -18,6 +18,12 @@ final class WorkbookLayoutAccessory: NSView {
         return options[index]
     }
 
+    /// Whether the scope was the user's to choose this time. A single-plate document
+    /// hides the row, and remembering the "all plates" it reports by default would
+    /// silently overwrite a choice made in a document that *does* have several — a
+    /// control that is not on screen must not write the preference.
+    var scopeWasOffered: Bool { offersScope }
+
     var selectedScope: WorkbookScope {
         guard offersScope else { return .allPlates }
         let options = WorkbookScope.allCases

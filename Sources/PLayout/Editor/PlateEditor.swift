@@ -45,11 +45,18 @@ final class PlateEditor: ObservableObject {
         /// what keeps sticky notes from needing any text-editing machinery of their own —
         /// and an `NSTextView` inside a magnified board would render soft anyway.
         case canvasNote(UUID)
+        /// A note being written for the first time, at a point on the board. It does not
+        /// exist in the document yet: creating it up front and opening the sheet meant
+        /// pressing Escape left a blank sticky note behind — and, because writing the
+        /// board freezes every auto-placed card where it happens to be, a cancelled
+        /// gesture also froze the whole arrangement into a file that autosaves in place.
+        case newCanvasNote(CGPoint)
         var id: String {
             switch self {
             case .well(let well): return "well-\(well)"
             case .plate: return "plate"
             case .canvasNote(let id): return "note-\(id.uuidString)"
+            case .newCanvasNote(let point): return "new-note-\(point.x)-\(point.y)"
             }
         }
     }
@@ -145,6 +152,16 @@ final class PlateEditor: ObservableObject {
     /// Parks the selection with the plate being left and restores the one belonging to
     /// the plate being entered. Without this the selection follows you from plate to
     /// plate, which on the board reads as every plate sharing one selection.
+    /// Drops parked selections for plates that no longer exist. Every other id-keyed
+    /// piece of state on the editor is pruned when the layout changes; this one was not,
+    /// so a deleted plate's selection — up to 1536 wells of it — stayed for the life of
+    /// the document.
+    private func pruneParkedSelections(in layout: Layout) {
+        guard !parkedSelections.isEmpty else { return }
+        let live = Set(layout.plates.map(\.id))
+        parkedSelections = parkedSelections.filter { live.contains($0.key) }
+    }
+
     private func swapSelection(to id: UUID?) {
         guard lastActivePlateID != id else { return }
         if let previous = lastActivePlateID {
@@ -256,7 +273,7 @@ final class PlateEditor: ObservableObject {
             return "Note for \(label)"
         case .plate:
             return "Note for \(plate?.name ?? "this plate")"
-        case .canvasNote:
+        case .canvasNote, .newCanvasNote:
             return "Note on the board"
         }
     }
@@ -266,6 +283,7 @@ final class PlateEditor: ObservableObject {
         case .well(let well): return plate?.note(well: well) ?? ""
         case .plate: return plate?.note ?? ""
         case .canvasNote(let id): return layout.canvas?[id]?.text ?? ""
+        case .newCanvasNote: return ""
         }
     }
 
@@ -287,6 +305,12 @@ final class PlateEditor: ObservableObject {
             guard let index = items.firstIndex(where: { $0.id == id }) else { return }
             items[index].text = clean
             updateCanvas("Edit Note") { $0.items = items }
+        case .newCanvasNote(let point):
+            let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            // Saved empty is the same as cancelled: nothing was ever written, so nothing
+            // is created and the board is not touched at all.
+            guard !clean.isEmpty else { return }
+            createCanvasNote(at: point, text: clean)
         }
     }
 
@@ -829,7 +853,16 @@ final class PlateEditor: ObservableObject {
         let index = plateIndex
         edit("Turn Plate") { layout in
             guard layout.plates.indices.contains(index) else { return }
-            layout.plates[index].orientation = wasTurned ? .upright : .turned
+            let format = layout.plates[index].format
+            let desired: PlateOrientation = wasTurned ? .upright : .turned
+            // nil means "follow the document", so prefer it whenever the document
+            // already gives the turn we want: turning a plate and turning it back then
+            // leaves the model exactly where it started, rather than pinning a value
+            // that looks identical but is not equal. Where the document disagrees — a
+            // document set to turned, one plate wanted upright — it has to be explicit.
+            let sameAsDocument = layout.orientation.quarterTurns(for: format)
+                == desired.quarterTurns(for: format)
+            layout.plates[index].orientation = sameAsDocument ? nil : desired
         }
         // Says where A1 went, which is the quickest way to see which way round it is.
         flash(wasTurned ? "Upright. A1 is top left." : "Turned 90°. A1 is now top right.")
@@ -1006,6 +1039,7 @@ final class PlateEditor: ObservableObject {
     /// Takes the incoming layout as a parameter: `@Published` emits during `willSet`,
     /// so `document.layout` is still the previous value while this runs.
     private func reconcileTargets(in layout: Layout) {
+        pruneParkedSelections(in: layout)
         if activePlateID == nil || !layout.plates.contains(where: { $0.id == activePlateID }) {
             activePlateID = layout.plates.first?.id
         }
@@ -1158,13 +1192,22 @@ final class PlateEditor: ObservableObject {
         updateCanvas("Bring to Front") { $0.items = items }
     }
 
+    /// Double-clicking empty board space asks for a note; the note itself is made when
+    /// there is something to put in it. See `NoteTarget.newCanvasNote`.
     func addCanvasNote(at point: CGPoint) {
+        noteTarget = .newCanvasNote(point)
+    }
+
+    /// Creates the note the sheet was opened for. One edit, so it is one ⌘Z — before,
+    /// the empty note and its text were two.
+    private func createCanvasNote(at point: CGPoint, text: String) {
         var items = canvasItems
-        let frame = CGRect(origin: point, size: CanvasArrangement.noteSize)
-        let note = CanvasItem(kind: .note, frame: CanvasFrame(frame))
+        var note = CanvasItem(kind: .note, frame: CanvasFrame(
+            CGRect(origin: point, size: CanvasArrangement.noteSize)
+        ))
+        note.text = text
         items.append(note)
         updateCanvas("Add Note") { $0.items = items }
-        noteTarget = .canvasNote(note.id)
     }
 
     /// Takes a card off the board. A note is deleted outright; a plate or the prep table
@@ -1278,6 +1321,11 @@ final class PlateEditor: ObservableObject {
     /// Opens the prep window, or brings it to the front if it is already up. No Overview
     /// guard, unlike every other sheet opener in this file: reading a prep plan with
     /// nothing armed is exactly what Overview is for.
+    /// Stable per document, for anything that needs to tell two open documents apart —
+    /// the prep window's saved frame, for one. Not the file name: a document is renamed
+    /// by Save As, and an untitled one has no name at all.
+    var documentIdentity: String { ObjectIdentifier(document).debugDescription }
+
     /// Called by the prep window when its document window closes: the editor lets go of
     /// the controller, which is the other half of breaking the cycle between them.
     func releasePrepWindow() {
@@ -1290,6 +1338,7 @@ final class PlateEditor: ObservableObject {
         // `canvas` is the document window's own plate view, so this is the document
         // window itself rather than whichever window happens to be key.
         controller.follow(documentWindow: canvas?.window)
+        controller.refreshTitle(suggestedBaseName)
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
     }
@@ -1779,11 +1828,16 @@ final class PlateEditor: ObservableObject {
     /// new method rather than a change to `printPlate`, so the plate path is provably
     /// untouched.
     func printFrontmost() {
-        if prepWindow?.window?.isKeyWindow == true, let plan = prepPlan {
-            PrepTableView.print(plan: plan, jobName: "\(suggestedBaseName) — prep")
-        } else {
-            printPlate()
+        // Which window is in front decides *what* is printed, and nothing else. The menu
+        // item retitles itself on the same condition, so falling through to the plate
+        // when there is no plan meant ⌘P printed the plate image while the File menu
+        // said "Print Prep Sheet…" — with the dose factor unset, or deleted out from
+        // under the open window.
+        guard prepWindow?.window?.isKeyWindow == true else { return printPlate() }
+        guard let plan = prepPlan else {
+            return flash("Nothing to print yet — pick the factor that carries the doses.")
         }
+        PrepTableView.print(plan: plan, jobName: "\(suggestedBaseName) — prep")
     }
 
     private func save(
@@ -1818,7 +1872,7 @@ final class PlateEditor: ObservableObject {
                 let choice = options.selectedLayout
                 choice.remember()
                 let scope = options.selectedScope
-                scope.remember()
+                if options.scopeWasOffered { scope.remember() }
                 let joint = options.selectedJointMap
                 joint.remember()
                 return Exporter.workbook(
