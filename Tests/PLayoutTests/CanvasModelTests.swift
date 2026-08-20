@@ -336,6 +336,30 @@ final class CanvasModelTests: XCTestCase {
         XCTAssertEqual(document.layout.canvas?.hidesPrep, true)
     }
 
+    /// A plate can shrink while its selection is parked, so the selection has to be
+    /// clamped on the way back in. Out of range it draws as nothing at all while still
+    /// painting when a key is pressed — an invisible selection acting on a well you
+    /// never chose.
+    func testAParkedSelectionIsClampedToThePlateItComesBackTo() throws {
+        let (document, editor) = multiPlate()
+        let first = document.layout.plates[0].id
+        let second = document.layout.plates[1].id
+
+        document.layout.plates[0].changeFormat(to: PlateFormat(rows: 32, cols: 48))
+        editor.activePlateID = first
+        editor.select(WellRange(single: WellPos(row: 31, col: 47)))
+        editor.activePlateID = second
+
+        // Shrunk while parked — an undone format change does exactly this.
+        document.layout.plates[0].changeFormat(to: .well96)
+        editor.activePlateID = first
+
+        let format = document.layout.plates[0].format
+        let selection = try XCTUnwrap(editor.selection)
+        XCTAssertLessThan(selection.maxRow, format.rows)
+        XCTAssertLessThan(selection.maxCol, format.cols)
+    }
+
     // MARK: - Turning one plate
 
     /// The board shows several plates at once, so standing a tall one on its end must not

@@ -152,9 +152,22 @@ final class PlateEditor: ObservableObject {
         }
         lastActivePlateID = id
         guard let id else { return }
+        // Looked up by the incoming id, not through `self.format`: `@Published` fires
+        // during `willSet`, so `plate` still resolves to the plate being *left*.
+        guard let format = layout.plates.first(where: { $0.id == id })?.format else {
+            selection = WellRange(single: WellPos(row: 0, col: 0))
+            customWells = nil
+            return
+        }
         if let parked = parkedSelections[id] {
-            selection = parked.range
-            customWells = parked.custom
+            // Clamped on the way back in. A plate can shrink while its selection is
+            // parked — a format change undone, say — and an out-of-range selection draws
+            // as nothing at all while still painting a well when a key is pressed, since
+            // `WellRange.indices(in:)` clips silently. A selection you cannot see acting
+            // on a well you did not choose is the worst kind of wrong here.
+            selection = parked.range?.clamped(to: format)
+            let wells = parked.custom?.filter { format.contains(row: $0.row, col: $0.col) }
+            customWells = (wells?.isEmpty ?? true) ? nil : wells
         } else {
             selection = WellRange(single: WellPos(row: 0, col: 0))
             customWells = nil
@@ -1265,9 +1278,18 @@ final class PlateEditor: ObservableObject {
     /// Opens the prep window, or brings it to the front if it is already up. No Overview
     /// guard, unlike every other sheet opener in this file: reading a prep plan with
     /// nothing armed is exactly what Overview is for.
+    /// Called by the prep window when its document window closes: the editor lets go of
+    /// the controller, which is the other half of breaking the cycle between them.
+    func releasePrepWindow() {
+        prepWindow = nil
+    }
+
     func openPrepWindow() {
         let controller = prepWindow ?? PrepWindowController(editor: self, title: suggestedBaseName)
         prepWindow = controller
+        // `canvas` is the document window's own plate view, so this is the document
+        // window itself rather than whichever window happens to be key.
+        controller.follow(documentWindow: canvas?.window)
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
     }

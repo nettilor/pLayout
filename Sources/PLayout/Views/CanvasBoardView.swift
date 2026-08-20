@@ -55,7 +55,14 @@ final class CanvasBoardView: NSView {
         // Never rebuild mid-drag. Re-adding a card to reorder it cancels the mouse
         // tracking of the very view being dragged — which is what made cards jump
         // around and, on a card already at the front, refuse to move at all.
-        guard !cards.values.contains(where: { $0.isDragging }) else { return }
+        //
+        // Believed only while a button is actually down: `isDragging` is cleared by a
+        // mouse-up, and a mouse-up can go missing — a sheet opened from the press takes
+        // it, or the window deactivates mid-gesture. A flag stuck on froze every board
+        // update for the life of the window, silently.
+        let dragging = NSEvent.pressedMouseButtons != 0
+            && cards.values.contains { $0.isDragging }
+        guard !dragging else { return }
         items = editor.canvasItems
         var live: Set<UUID> = []
         // Built once per reload rather than once per card: it walks every well of every
@@ -119,6 +126,7 @@ final class CanvasBoardView: NSView {
             if item.kind == .plate, let id = item.plateID { editor?.activatePlate(id) }
         }
         card.onClose = { [weak editor] in editor?.closeCanvasItem(item.id) }
+        card.onSettle = { [weak self] in self?.reload() }
         card.onOpen = { [weak editor] in
             if item.kind == .note { editor?.noteTarget = .canvasNote(item.id) }
         }
@@ -302,6 +310,9 @@ final class CanvasCardView: NSView {
     var onActivate: (() -> Void)?
     var onOpen: (() -> Void)?
     var onClose: (() -> Void)?
+    /// A press that ended without moving the card: nothing to write, but the board still
+    /// has to be brought back up to date. See `mouseUp`.
+    var onSettle: (() -> Void)?
 
     var content: NSView? {
         didSet {
@@ -583,11 +594,22 @@ final class CanvasCardView: NSView {
     override func mouseUp(with event: NSEvent) {
         guard drag != .none else { return }
         let wasResizing = drag == .resize
+        let moved = frame != startFrame
         drag = .none
         isDragging = false
         if wasResizing { layoutContent() }
-        // Committed once, on mouse up: a drag is one ⌘Z, the same rule painting follows.
-        onCommitFrame?(frame)
+        if moved {
+            // Committed once, on mouse up: a drag is one ⌘Z, the same rule painting follows.
+            onCommitFrame?(frame)
+        } else {
+            // A press that did not move the card is not a move. Committing one wrote a
+            // "Move Card" undo step for merely clicking a title bar — and worse, when the
+            // resulting `Layout` was unchanged the document did not publish, so the
+            // reload suppressed for the duration of the press never happened: the wrong
+            // card kept the accent border, the keyboard stayed with the plate you had
+            // left, and this card kept the raised `zPosition` it was given on the press.
+            onSettle?()
+        }
     }
 }
 

@@ -131,12 +131,11 @@ struct ContentView: View {
             // On the board a tab still names the plate you are editing, so it brings that
             // card into view rather than leaving you to find it.
             if editor.showsCanvas { editor.board?.reveal(plateID: plate.id) }
-            if renaming {
-                renamingPlateID = plate.id
-            } else {
-                renamingPlateID = nil
-                editor.select(WellRange(single: WellPos(row: 0, col: 0)))
-            }
+            // Deliberately no selection reset here. Setting `activePlateID` above hands
+            // the plate back its own parked selection; resetting to A1 afterwards threw
+            // that away, so per-plate selection worked on the board and not on the tabs —
+            // the same act, two behaviours.
+            renamingPlateID = renaming ? plate.id : nil
         }
         .help("Double-click to rename")
         .contextMenu {

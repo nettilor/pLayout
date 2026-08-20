@@ -196,7 +196,15 @@ struct PrepView: View {
             } else {
                 stockRow(
                     name: "All wells", colorHex: nil, stock: setup.stock,
-                    set: { stock in editor.updatePrep("Stock Concentration") { $0.stock = stock } }
+                    // Filtered exactly as `setStock` filters a compound's: a unit typed
+                    // before a number is not a stock, and storing `0 mM` put "stock 0 mM"
+                    // in the workbook where the window and the printout both say "no
+                    // stock set".
+                    set: { stock in
+                        editor.updatePrep("Stock Concentration") {
+                            $0.stock = stock?.isUsable == true ? stock : nil
+                        }
+                    }
                 )
             }
         }

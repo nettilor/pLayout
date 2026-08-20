@@ -42,7 +42,11 @@ final class PrepWindowRegistry: ObservableObject {
 /// window belongs to.
 final class PrepWindowController: NSWindowController, NSWindowDelegate {
 
-    private unowned let editor: PlateEditor
+    /// Weak, not `unowned`. The document window's close tears this down, and during
+    /// `PlateEditor.deinit` an unowned read traps outright — `windowWillClose` fires
+    /// from `close()` and would read an object already being destroyed.
+    private weak var editor: PlateEditor?
+    private var documentWindowObserver: NSObjectProtocol?
 
     init(editor: PlateEditor, title: String) {
         self.editor = editor
@@ -77,14 +81,57 @@ final class PrepWindowController: NSWindowController, NSWindowDelegate {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
     func windowDidBecomeKey(_ notification: Notification) {
+        guard let editor else { return }
         PrepWindowRegistry.shared.noteBecameKey(editor)
     }
 
     func windowDidResignKey(_ notification: Notification) {
+        guard let editor else { return }
         PrepWindowRegistry.shared.noteResignedKey(editor)
     }
 
     func windowWillClose(_ notification: Notification) {
+        guard let editor else { return }
         PrepWindowRegistry.shared.noteResignedKey(editor)
+    }
+
+    /// Ties this window to the document window it was opened from.
+    ///
+    /// Nothing in AppKit says a hand-built window belongs to a document, and the editor's
+    /// `deinit` cannot do it: the hosting controller's SwiftUI content holds the editor
+    /// strongly, so editor → controller → window → content → editor is a cycle and the
+    /// editor is never released. Left alone, closing the document leaves this window on
+    /// screen still writing to a document that is no longer open — edits that go nowhere
+    /// and are never saved. So the tie is made explicitly, and closing the document
+    /// closes this and breaks the cycle.
+    func follow(documentWindow: NSWindow?) {
+        guard let documentWindow, documentWindowObserver == nil else { return }
+        documentWindowObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: documentWindow, queue: .main
+        ) { [weak self] _ in self?.documentWindowClosed() }
+    }
+
+    private func documentWindowClosed() {
+        if let documentWindowObserver {
+            NotificationCenter.default.removeObserver(documentWindowObserver)
+        }
+        documentWindowObserver = nil
+        if let editor { PrepWindowRegistry.shared.noteResignedKey(editor) }
+        window?.delegate = nil
+        // Dropping the content is what actually breaks the cycle: it is the SwiftUI view
+        // inside it that holds the editor.
+        window?.contentViewController = nil
+        close()
+        let editor = self.editor
+        self.editor = nil
+        // Hopped, so this controller is not deallocated part-way through its own method
+        // when the editor lets go of its last reference to it.
+        DispatchQueue.main.async { editor?.releasePrepWindow() }
+    }
+
+    deinit {
+        if let documentWindowObserver {
+            NotificationCenter.default.removeObserver(documentWindowObserver)
+        }
     }
 }

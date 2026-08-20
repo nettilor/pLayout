@@ -43,9 +43,17 @@ struct CommitTextField: View {
         // so put the old one back rather than leaving the field looking empty.
         if trimmed.isEmpty && !allowsEmpty {
             draft = text
-        } else {
-            onCommit(trimmed)
+            return
         }
+        // Nothing typed, nothing committed. This fires on losing focus *and* again on
+        // disappearing, so without it merely clicking into a field and out again — or
+        // just closing the window — reports an edit. Most owners turn that into a no-op
+        // change the model discards, but one that seeds a value into a document which
+        // never had one cannot: the prep sheet went from "never used" to "configured"
+        // because someone clicked in the Diluent box, which put an undo step nobody
+        // performed on the stack and a Prep tab in every Excel export from then on.
+        guard trimmed != text else { return }
+        onCommit(trimmed)
     }
 }
 
