@@ -296,4 +296,149 @@ final class CanvasCardTests: XCTestCase {
         let dark = try XCTUnwrap(card.layer?.borderColor)
         XCTAssertNotEqual(light, dark, "the border kept the colour it was first resolved in")
     }
+
+    // MARK: - The resize grip and the last well
+
+    /// The board is flipped, so hosting a card in a flipped view makes a point in the
+    /// card's own coordinates the same point in its superview's — which is what
+    /// `hitTest` is handed.
+    private final class FlippedHost: NSView {
+        override var isFlipped: Bool { true }
+    }
+
+    /// A plate card exactly as the board makes one: chrome round a real `PlateCanvasView`,
+    /// at the size `CanvasArrangement` gives that format.
+    private func plateCard(
+        plate index: Int = 0, size: NSSize
+    ) -> (card: CanvasCardView, canvas: PlateCanvasView) {
+        let host = FlippedHost(frame: NSRect(x: 0, y: 0, width: 600, height: 400))
+        let card = CanvasCardView(itemID: UUID(), kind: .plate)
+        card.frame = NSRect(origin: .zero, size: size)
+        let canvas = PlateCanvasView()
+        canvas.attach(editor: editor, role: .card(plateID: document.layout.plates[index].id))
+        card.content = canvas
+        host.addSubview(card)
+        window.contentView = host
+        return (card, canvas)
+    }
+
+    private func cardEvent(
+        _ type: NSEvent.EventType, at point: CGPoint, in card: CanvasCardView
+    ) -> NSEvent {
+        NSEvent.mouseEvent(
+            with: type, location: card.convert(point, to: nil), modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+            context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+        )!
+    }
+
+    /// The grip was a 26 pt square in the corner sitting on top of the 10 pt bands.
+    ///
+    /// `PlateGeometry` pads a plate by 14 pt inside a content view that is itself inset a
+    /// point from the card, so on a 96-well card at its auto-placed 342×265 the grid stops
+    /// 15 pt short of the right and bottom edges — and 26 reaches 11 pt past that, right
+    /// over the bottom-right corner of well H12. Aiming at the last well of the plate
+    /// started a resize instead of painting it.
+    func testTheResizeGripDoesNotCoverTheLastWell() {
+        let size = CanvasArrangement.size(forPlate: .well96, quarterTurns: 0)
+        let (card, canvas) = plateCard(size: size)
+
+        let geo = PlateGeometry(format: .well96, bounds: canvas.bounds)
+        let h12 = geo.cellRect(row: 7, col: 11)
+        // Two points in from the well's own corner, so this is unambiguously inside H12
+        // rather than an argument about rounding at its edge.
+        let corner = card.convert(CGPoint(x: h12.maxX - 2, y: h12.maxY - 2), from: canvas)
+
+        XCTAssertTrue(card.bounds.contains(corner))
+        XCTAssertTrue(
+            card.hitTest(corner) === canvas,
+            "the chrome claimed \(corner) on a \(size) card — H12 resizes instead of painting"
+        )
+        // The whole well, not just its far corner: nothing over a well may be chrome.
+        for point in [CGPoint(x: h12.midX, y: h12.midY),
+                      CGPoint(x: h12.maxX - 1, y: h12.midY),
+                      CGPoint(x: h12.midX, y: h12.maxY - 1)] {
+            XCTAssertTrue(card.hitTest(card.convert(point, from: canvas)) === canvas, "\(point)")
+        }
+    }
+
+    /// And 10 pt is not a lucky number for one card size. The plate's own padding is what
+    /// licenses a band at all: 14 pt inside a content view inset a point from the card
+    /// means the plate — headers included — can never come within 15 pt of the right or
+    /// bottom edge, at any format, any turn, any card size. That margin is the budget, a
+    /// 10 pt band spends two thirds of it, and a 26 pt corner square never fitted in it.
+    func testThePlateNeverReachesTheResizeBands() throws {
+        let formats: [PlateFormat] = [.well6, .well24, .well96, .well384, .well1536,
+                                      PlateFormat(rows: 24, cols: 8)]
+        let card = CanvasCardView(itemID: UUID(), kind: .plate)
+        card.content = SolidContent()
+
+        for format in formats {
+            for turns in 0..<4 {
+                for scale in [1.0, 0.55, 2.4] as [CGFloat] {
+                    let auto = CanvasArrangement.size(forPlate: format, quarterTurns: turns)
+                    card.frame = NSRect(
+                        x: 0, y: 0,
+                        width: max(CanvasFrame.minimum.width, (auto.width * scale).rounded()),
+                        height: max(CanvasFrame.minimum.height, (auto.height * scale).rounded())
+                    )
+                    // The card's own body rect, so the one-point inset is measured rather
+                    // than restated.
+                    let body = try XCTUnwrap(card.content)
+                    let geo = PlateGeometry(format: format, bounds: body.bounds, quarterTurns: turns)
+                    let drawn = body.convert(geo.frameRect, to: card)
+                    let at = "\(format.rows)×\(format.cols), \(turns) turns, \(card.frame.size)"
+                    XCTAssertLessThanOrEqual(drawn.maxX, card.bounds.maxX - 15, "right margin: \(at)")
+                    XCTAssertLessThanOrEqual(drawn.maxY, card.bounds.maxY - 15, "bottom margin: \(at)")
+                }
+            }
+        }
+    }
+
+    /// The bands are what make a resize easy to start — the whole right-hand and bottom
+    /// edge, not a triangle — so removing the oversized corner must not have cost that.
+    func testAResizeIsStillEasyToStartFromEitherEdgeAndTheCorner() {
+        let (card, canvas) = plateCard(size: CanvasArrangement.size(forPlate: .well96, quarterTurns: 0))
+        let grabs = [
+            "right edge": CGPoint(x: card.bounds.maxX - 3, y: card.bounds.midY),
+            "bottom edge": CGPoint(x: card.bounds.midX, y: card.bounds.maxY - 3),
+            "the corner": CGPoint(x: card.bounds.maxX - 3, y: card.bounds.maxY - 3),
+        ]
+        for (name, point) in grabs {
+            XCTAssertTrue(card.hitTest(point) === card, "the card lost \(name)")
+        }
+        XCTAssertTrue(
+            card.hitTest(CGPoint(x: card.bounds.midX, y: card.bounds.midY)) === canvas,
+            "and the middle of the card is still the plate"
+        )
+    }
+
+    /// `setFrameSize` returns early while a drag is live, because re-laying a plate out is
+    /// a full re-render of every well and doing that on every frame is what made dragging
+    /// a dense plate choppy where the prep table was smooth. `layout()` handed it straight
+    /// back: a card is layer-backed, so it runs on the next display cycle, and
+    /// `mouseDragged` sets `needsLayout` itself.
+    func testAResizeDoesNotReLayTheContentOutOnEveryFrame() {
+        let (card, canvas) = plateCard(size: CanvasArrangement.size(forPlate: .well96, quarterTurns: 0))
+        let settled = canvas.frame
+        let startWidth = card.frame.width
+
+        let grab = CGPoint(x: card.bounds.maxX - 3, y: card.bounds.maxY - 3)
+        card.mouseDown(with: cardEvent(.leftMouseDown, at: grab, in: card))
+        XCTAssertTrue(card.isDragging, "the corner has to start a resize")
+
+        for step in stride(from: 20.0, through: 100.0, by: 20.0) {
+            let to = CGPoint(x: grab.x + step, y: grab.y + step)
+            card.mouseDragged(with: cardEvent(.leftMouseDragged, at: to, in: card))
+            // The display cycle a layer-backed view runs anyway, and which the drag has
+            // just asked for by setting `needsLayout`.
+            card.layout()
+            XCTAssertEqual(canvas.frame, settled, "the plate was re-framed mid-drag, at +\(step)")
+        }
+
+        XCTAssertGreaterThan(card.frame.width, startWidth, "the card itself still resizes live")
+        card.mouseUp(with: cardEvent(.leftMouseUp, at: CGPoint(x: grab.x + 100, y: grab.y + 100), in: card))
+        XCTAssertNotEqual(canvas.frame, settled, "and the plate catches up once, on mouse up")
+        XCTAssertEqual(canvas.frame.width, card.bounds.width - 2)
+    }
 }

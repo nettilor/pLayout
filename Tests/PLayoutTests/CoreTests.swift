@@ -161,9 +161,58 @@ final class TableIOTests: XCTestCase {
         XCTAssertEqual(TSV.strippingPlateHeaders(grid), grid)
     }
 
+    /// An absent header is not a header. Every one of the three tests used to accept a
+    /// blank cell, so a copied block that merely had nothing painted down its left edge
+    /// and across its top passed all three and was stripped: ⌘V landed a row up and a
+    /// column left of where it was aimed, and the row and column that were eaten never
+    /// cleared the wells they covered. Copying a blank block to clear a region is the
+    /// same bug — it cleared one row and one column less than it covered.
+    func testAnUnpaintedEdgeIsNotAPlateHeader() {
+        let copied = TSV.parse("\t\t\t\n\tX\tY\tZ\n\tX\tY\tZ\n\tX\tY\tZ\n")
+        XCTAssertEqual(copied.count, 4)
+        XCTAssertEqual(TSV.strippingPlateHeaders(copied), copied, "no header is present to strip")
+
+        let blank = TSV.parse("\t\t\n\t\t\n\t\t\n")
+        XCTAssertEqual(TSV.strippingPlateHeaders(blank), blank, "all 3 × 3 of it must reach the plate")
+    }
+
+    /// And a header that is only half there is not evidence either: a top row of column
+    /// numbers with gaps in it is data as far as this can tell, and guessing wrong moves
+    /// every value by one well.
+    func testAPartialHeaderRowIsNotStripped() {
+        let gappy = TSV.parse("\t1\t\t3\nA\tCtrl\tCtrl\tDrug\nB\tCtrl\tDrug\tDrug\n")
+        XCTAssertEqual(TSV.strippingPlateHeaders(gappy), gappy)
+
+        let gappyLeft = TSV.parse("\t1\t2\t3\nA\tCtrl\tCtrl\tDrug\n\tCtrl\tDrug\tDrug\n")
+        XCTAssertEqual(TSV.strippingPlateHeaders(gappyLeft), gappyLeft)
+    }
+
     func testCSVQuotingRoundTrip() {
         let grid = [["plain", "has,comma"], ["has\"quote", "has\nnewline"]]
         XCTAssertEqual(CSV.parse(CSV.serialize(grid)), grid)
+    }
+
+    /// A blank row at the bottom of a plate map is a statement — those wells are empty —
+    /// and import clears them for it. CSV used to delete every trailing all-empty row, so
+    /// the file extension decided which wells changed: the same 8-row map cleared row H
+    /// as .tsv and left it painted as .csv. Both parsers now keep it.
+    func testABlankBottomRowOfAPlateMapSurvivesInBothFormats() {
+        let csv = "Ctrl,Ctrl,Drug\nCtrl,Drug,Drug\n,,\n"
+        let tsv = "Ctrl\tCtrl\tDrug\nCtrl\tDrug\tDrug\n\t\t\n"
+        let expected = [["Ctrl", "Ctrl", "Drug"], ["Ctrl", "Drug", "Drug"], ["", "", ""]]
+        XCTAssertEqual(TSV.parse(tsv), expected)
+        XCTAssertEqual(CSV.parse(csv), expected, "the same map must import the same way")
+    }
+
+    /// The one trailing row that is not a row of wells: the empty field a file's last
+    /// newline leaves behind. Keeping it would paste a phantom blank line onto the plate,
+    /// so it goes — in both formats, and however many of them there are.
+    func testATrailingNewlineIsNotARowOfWells() {
+        XCTAssertEqual(CSV.parse("a,b\nc,d\n"), [["a", "b"], ["c", "d"]])
+        XCTAssertEqual(CSV.parse("a,b\nc,d\n\n\n"), [["a", "b"], ["c", "d"]])
+        XCTAssertEqual(TSV.parse("a\tb\nc\td\n\n\n"), [["a", "b"], ["c", "d"]])
+        XCTAssertEqual(CSV.parse(""), [])
+        XCTAssertEqual(TSV.parse(""), [])
     }
 
     func testTidyGridHasOneRowPerWell() {
@@ -603,6 +652,69 @@ final class WorkbookTests: XCTestCase {
         var layout = prepLayout()
         layout.prep?.includeInWorkbook = false
         XCTAssertFalse(try sheetNames(of: Exporter.workbook(from: layout)).contains("Prep"))
+    }
+
+    /// The Prep tab's XML, or "" when the workbook has no such tab.
+    private func prepSheetXML(of data: Data) throws -> String {
+        guard let index = try sheetNames(of: data).firstIndex(of: "Prep") else { return "" }
+        let directory = try unzip(data)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        return try String(
+            contentsOf: directory.appendingPathComponent("xl/worksheets/sheet\(index + 1).xml"),
+            encoding: .utf8
+        )
+    }
+
+    /// A refusal is the one thing the bench must not miss, and a tab gated on "has tubes"
+    /// hid exactly that. `DilutionPlan` answers an added volume larger than the well with
+    /// no compounds at all and the reason in `warnings`, so the workbook came out with no
+    /// Prep tab and no message, while the window and the printout — which ask
+    /// `!isEmpty || !allWarnings.isEmpty` — both showed the error.
+    func testThePrepTabCarriesARefusalThatLeavesNothingToMake() throws {
+        var layout = prepLayout()
+        layout.prep?.addedVolume = 150          // into a well that ends up holding 100 µL
+        let plan = try XCTUnwrap(DilutionPlan.make(from: layout))
+        XCTAssertTrue(plan.isEmpty, "the premise: nothing to make, something to say")
+
+        let xml = try prepSheetXML(of: Exporter.workbook(from: layout))
+        XCTAssertFalse(xml.isEmpty, "the tab that carries the refusal is the one that vanished")
+        XCTAssertTrue(xml.contains("Before you start"), "an emitted sheet has to say why")
+        for warning in plan.allWarnings {
+            XCTAssertTrue(xml.contains(warning.text), "the sheet omits: \(warning.text)")
+        }
+    }
+
+    /// The other half of that rule, so widening the gate cannot leave a sheet of nothing
+    /// but headings in the workbook: a setup over an unpainted plate has no tubes *and*
+    /// nothing to warn about, and still adds no tab.
+    func testAPrepSetupWithNothingToSayStillAddsNoTab() throws {
+        var layout = prepLayout()
+        let dose = try XCTUnwrap(layout.factors.first { $0.name == "Dose" })
+        for well in 0..<layout.plates[0].format.wellCount {
+            layout.plates[0].setLevelID(nil, factor: dose.id, well: well)
+        }
+        let plan = try XCTUnwrap(DilutionPlan.make(from: layout))
+        XCTAssertTrue(plan.isEmpty)
+        XCTAssertTrue(plan.allWarnings.isEmpty, "the premise: nothing to say either")
+
+        XCTAssertFalse(try sheetNames(of: Exporter.workbook(from: layout)).contains("Prep"))
+    }
+
+    /// Zero is not a concentration anything can be diluted from: the plan refuses to use
+    /// such a stock and warns that there is none. Printing "stock 0 mM" beside the tubes
+    /// therefore states a value the rest of the sheet denies — and a zero-with-a-unit is
+    /// what a document carries whenever the unit was typed before the number. The window
+    /// and the printout ask `isUsable`; the workbook only checked for nil.
+    func testAStockOfZeroReadsAsNoStockSetInTheWorkbook() throws {
+        var layout = prepLayout()
+        let unset = StockConcentration(value: 0, unit: "mM")
+        XCTAssertFalse(unset.isUsable)
+        let drug = try XCTUnwrap(layout.factors.firstIndex { $0.name == "Drug" })
+        layout.factors[drug].levels[0].stock = unset
+
+        let xml = try prepSheetXML(of: Exporter.workbook(from: layout))
+        XCTAssertFalse(xml.contains("stock \(unset.label)"), "0 mM is not a stock to take from")
+        XCTAssertTrue(xml.contains("no stock set"), "the words the window and the printout use")
     }
 
     /// The volumes have to arrive as numbers, or nobody can sum a column of them.

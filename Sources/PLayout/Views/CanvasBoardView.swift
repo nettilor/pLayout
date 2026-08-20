@@ -17,6 +17,8 @@ final class CanvasBoardView: NSView {
     private var cards: [UUID: CanvasCardView] = [:]
     private var items: [CanvasItem] = []
     private var displayScale: CGFloat = 1
+    private var viewportObserver: NSObjectProtocol?
+    private weak var observedClip: NSClipView?
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { false }
@@ -138,6 +140,14 @@ final class CanvasBoardView: NSView {
         switch item.kind {
         case .plate:
             let plate = PlateCanvasView()
+            // Born with the hint every other card is already drawing with.
+            //
+            // `noteDisplayScale` only fires when the magnification *changes*, so a card
+            // created after the board was zoomed out was never told: zoom to 25%, drag a
+            // plate tab on, and the new card drew the labels and hairlines its neighbours
+            // had dropped — looking different from all of them and paying in full the
+            // render cost the hint exists to avoid.
+            plate.displayScale = displayScale
             if let id = item.plateID { plate.attach(editor: editor, role: .card(plateID: id)) }
             return plate
         case .prep:
@@ -173,6 +183,40 @@ final class CanvasBoardView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         applyBackground()
+        observeViewport()
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        observeViewport()
+    }
+
+    /// The board has to keep covering the viewport, and the viewport changes size without
+    /// anyone asking the board about it.
+    ///
+    /// `applyExtent()` used to run only from `reload()` and from the magnification
+    /// handler, so zooming out and *then* widening the window — or entering full screen —
+    /// touched neither: the document view kept the size it was given for the old viewport,
+    /// the dot grid ended mid-air, and `CenteringClipView.constrainBoundsRect`, which can
+    /// otherwise never fire, suddenly recentred and jumped every card sideways.
+    ///
+    /// The prep table needed the same answer: an `NSScrollView` does not resize its
+    /// document view, so the document view watches the clip view's frame itself.
+    /// Delivered on the posting thread rather than queued, so the board is the right size
+    /// within the same layout pass that resized the viewport.
+    private func observeViewport() {
+        guard let clip = enclosingScrollView?.contentView, clip !== observedClip else { return }
+        if let viewportObserver { NotificationCenter.default.removeObserver(viewportObserver) }
+        clip.postsFrameChangedNotifications = true
+        observedClip = clip
+        viewportObserver = NotificationCenter.default.addObserver(
+            forName: NSView.frameDidChangeNotification, object: clip, queue: nil
+        ) { [weak self] _ in self?.applyExtent() }
+        applyExtent()
+    }
+
+    deinit {
+        if let viewportObserver { NotificationCenter.default.removeObserver(viewportObserver) }
     }
 
     /// The board's own size: what is on it plus room to pan, and never smaller than the
@@ -220,6 +264,27 @@ final class CanvasBoardView: NSView {
 
     // MARK: - Board background and empty space
 
+    /// The magnification the **grid** draws against, read live at draw time.
+    ///
+    /// `displayScale` is deliberately stale during a pinch: the cards keep their detail
+    /// until the gesture ends, which is what keeps a pinch smooth, and nothing here
+    /// changes that. The grid is not a card — it fills the viewport, and the viewport is
+    /// growing under your fingers. Pinching from 100% out to 20% with the old value still
+    /// in hand asked for a dot every 40 board points across an area five times larger,
+    /// which ran into `gridDotCap` partway down and left the bottom of the board drawing
+    /// no dots at all until you lifted off.
+    var liveGridScale: CGFloat { enclosingScrollView?.magnification ?? displayScale }
+
+    /// The dot spacing for a magnification — a static function so the rule is testable
+    /// without a screenshot. Scaled by the magnification so the dots stay the same
+    /// distance apart *on screen*.
+    static func gridStep(forScale scale: CGFloat) -> CGFloat { max(40, 40 / max(scale, 0.05)) }
+
+    /// Below this the dots are mush and are not drawn at all.
+    static let gridFloor: CGFloat = 0.25
+    /// A hard stop on one `draw` call, so a pathological step can never lock the board up.
+    static let gridDotCap = 6_000
+
     override func draw(_ dirtyRect: NSRect) {
         // The whole damaged rect, not clipped to bounds: this is the document view, so
         // there is nothing behind it to protect, and any sliver left unpainted shows as
@@ -229,20 +294,21 @@ final class CanvasBoardView: NSView {
 
         // A dot grid, so panning an empty board still reads as movement.
         //
-        // The step is scaled by the magnification so the dots stay the same distance
-        // apart *on screen*. With a fixed board-space step, zooming out to 19% asked for
-        // roughly 12,000 dots across a viewport-sized dirty rect — which is its own
-        // answer to why the board felt heavy when zoomed out.
-        guard displayScale > 0.25 else { return }
-        let step: CGFloat = max(40, 40 / max(displayScale, 0.05))
+        // Against the *live* magnification, not the cards' hint: with a fixed board-space
+        // step, zooming out to 19% asked for roughly 12,000 dots across a viewport-sized
+        // dirty rect — which is its own answer to why the board felt heavy when zoomed
+        // out, and, once the cap bit, why the bottom of it went bare mid-pinch.
+        let scale = liveGridScale
+        guard scale > Self.gridFloor else { return }
+        let step = Self.gridStep(forScale: scale)
         Preferences.shared.canvasGrid.setFill()
-        let dot = max(1.5, 1.5 / max(displayScale, 0.2))
+        let dot = max(1.5, 1.5 / max(scale, 0.2))
         let area = dirtyRect.intersection(bounds)
         var y = (area.minY / step).rounded(.down) * step
         var drawn = 0
-        while y < area.maxY, drawn < 6_000 {
+        while y < area.maxY, drawn < Self.gridDotCap {
             var x = (area.minX / step).rounded(.down) * step
-            while x < area.maxX, drawn < 6_000 {
+            while x < area.maxX, drawn < Self.gridDotCap {
                 NSBezierPath(ovalIn: NSRect(x: x, y: y, width: dot, height: dot)).fill()
                 x += step
                 drawn += 1
@@ -326,9 +392,20 @@ final class CanvasCardView: NSView {
     /// One radius, used by the layer mask and by the border stroke, so the outline and
     /// the card it outlines cannot disagree.
     static let cornerRadius: CGFloat = 10
-    /// Generous on purpose: a 16 pt corner was genuinely hard to hit, so the whole
-    /// right-hand and bottom edge resizes, not just the little triangle that shows it.
-    private static let gripSize: CGFloat = 26
+    /// A 16 pt corner was genuinely hard to hit, so the whole right-hand and bottom edge
+    /// resizes, not just the little triangle that shows it. The band is what makes a
+    /// resize easy to start; the corner is simply where the two bands meet.
+    ///
+    /// 10 pt is also the most the band may take. `PlateGeometry` pads a plate by 14 pt
+    /// inside a content view that is itself inset a point from the card, so the grid can
+    /// never come closer than 15 pt to the right or bottom edge — whatever the card's
+    /// size and whatever the plate's format — and a 10 pt band clears it by 5.
+    ///
+    /// There used to be a separate 26 pt square sitting on top of the bands, and 26
+    /// reaches 11 pt *past* that margin: on a 96-well card at the size
+    /// `CanvasArrangement.size` gives it, the square covered the bottom-right corner of
+    /// well H12, so trying to paint the last well of a plate started a resize instead.
+    /// It never added a grab the bands did not already have — only that overlap.
     private static let edgeGrab: CGFloat = 10
 
     private enum Drag { case none, move, resize }
@@ -423,8 +500,17 @@ final class CanvasCardView: NSView {
         }
     }
 
+    /// Under the same guard `setFrameSize` applies, or the guard does nothing.
+    ///
+    /// A card is layer-backed, so `layout()` runs on the next display cycle — and
+    /// `mouseDragged` sets `needsLayout`. The early return in `setFrameSize` was therefore
+    /// bought back a frame later by this pass, and resizing a 1536-well card re-laid the
+    /// plate out on every single frame: exactly the choppiness the guard was added to
+    /// remove. It catches up once, on mouse up, where `mouseUp` already re-lays a resized
+    /// card out.
     override func layout() {
         super.layout()
+        guard !isDragging else { return }
         layoutContent()
     }
 
@@ -507,17 +593,17 @@ final class CanvasCardView: NSView {
         grip.stroke()
     }
 
+    /// Where the two bands meet — the glyph's own square, not a larger one behind it.
     private var gripRect: NSRect {
-        NSRect(x: bounds.maxX - Self.gripSize, y: bounds.maxY - Self.gripSize,
-               width: Self.gripSize, height: Self.gripSize)
+        NSRect(x: bounds.maxX - Self.edgeGrab, y: bounds.maxY - Self.edgeGrab,
+               width: Self.edgeGrab, height: Self.edgeGrab)
     }
 
-    /// Anywhere along the right or bottom edge, not only the corner.
+    /// Anywhere along the right or bottom edge, not only the corner — and never further
+    /// in than `edgeGrab`, which is what keeps the whole plate clickable.
     private func resizeRegion(contains point: CGPoint) -> Bool {
-        if gripRect.contains(point) { return true }
-        let nearRight = point.x >= bounds.maxX - Self.edgeGrab
-        let nearBottom = point.y >= bounds.maxY - Self.edgeGrab
-        return (nearRight || nearBottom) && point.y > Self.titleHeight
+        guard point.y > Self.titleHeight else { return false }
+        return point.x >= bounds.maxX - Self.edgeGrab || point.y >= bounds.maxY - Self.edgeGrab
     }
 
     private var closeRect: NSRect {
@@ -525,10 +611,25 @@ final class CanvasCardView: NSView {
     }
 
     /// The cursor says which edges do what, so the grab areas do not have to be guessed.
+    ///
+    /// It follows `resizeRegion` exactly. The crosshair used to be claimed by the old
+    /// 26 pt square, which put it over the last well of the plate — a cursor promising a
+    /// resize on a well you were about to paint.
     override func resetCursorRects() {
         super.resetCursorRects()
         addCursorRect(NSRect(x: 0, y: 0, width: bounds.width, height: Self.titleHeight),
                       cursor: .openHand)
+        let body = max(0, bounds.height - Self.titleHeight)
+        addCursorRect(
+            NSRect(x: bounds.maxX - Self.edgeGrab, y: Self.titleHeight,
+                   width: Self.edgeGrab, height: body),
+            cursor: .resizeLeftRight
+        )
+        addCursorRect(
+            NSRect(x: 0, y: bounds.maxY - Self.edgeGrab,
+                   width: bounds.width, height: min(Self.edgeGrab, body)),
+            cursor: .resizeUpDown
+        )
         addCursorRect(gripRect, cursor: .crosshair)
     }
 

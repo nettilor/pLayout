@@ -29,8 +29,35 @@ final class CanvasScrollView: NSScrollView, PlateZoomController {
                 self.board?.noteDisplayScale(self.magnification)
             }
         }
-        editor.noteZoomChanged(magnification)
+        // Pure view work, and the board has to know the scale before it makes a card:
+        // safe to do here, because it publishes nothing.
         board?.noteDisplayScale(magnification)
+        publishZoomWhenSettled()
+    }
+
+    /// The first push is deferred by one turn of the main queue.
+    ///
+    /// `bind(to:)` is called from `updateNSViewController`, i.e. from inside SwiftUI's own
+    /// update pass, and the board's floor (0.15) is not the value the editor starts on
+    /// (1) — so the first update after the board appeared mutated an `@Published` property
+    /// of the very object SwiftUI was rendering: "Publishing changes from within view
+    /// updates is not allowed". It converged, but it invalidated the view mid-build every
+    /// time the board was switched on.
+    ///
+    /// Only the *initial* push needs this. `setZoom`, `fitContent` and the magnify
+    /// notification are all user-driven and run nowhere near an update pass, so they stay
+    /// synchronous — which is what keeps the published zoom equal to the magnification the
+    /// scroll view actually has.
+    private func publishZoomWhenSettled() {
+        guard let editor else { return }
+        // Nothing to say: skip the hop rather than queue a block per SwiftUI pass.
+        guard abs(editor.minimumZoomLevel - minimumZoom) > 0.0001
+            || abs(editor.zoomLevel - magnification) > 0.001
+        else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let editor = self.editor, editor.zoomController === self else { return }
+            editor.noteZoomChanged(self.magnification)
+        }
     }
 
     func setZoom(_ value: CGFloat) {

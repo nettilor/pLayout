@@ -23,14 +23,19 @@ enum TSV {
     static func strippingPlateHeaders(_ grid: [[String]]) -> [[String]] {
         guard grid.count >= 2, let first = grid.first, first.count >= 2 else { return grid }
 
+        // Every label has to actually be there. Letting a blank cell count as "looks like
+        // a header" meant a block that merely had nothing painted along its top row and
+        // left edge passed all three tests, and a plain ⌘V of it landed one row up and
+        // one column left — dropping the very row and column whose emptiness was the
+        // point, so they never cleared the wells they covered. An absent header is not a
+        // header, and a half-present one is no evidence: guessing wrong here moves every
+        // value by a well, while declining to strip a real header is visible at once.
         let topLooksNumeric = first.dropFirst().enumerated().allSatisfy { offset, cell in
-            let t = cell.trimmingCharacters(in: .whitespaces)
-            return t.isEmpty || Int(t) == offset + 1
+            Int(cell.trimmingCharacters(in: .whitespaces)) == offset + 1
         }
         let cornerEmpty = first[0].trimmingCharacters(in: .whitespaces).isEmpty
         let leftLooksAlpha = grid.dropFirst().enumerated().allSatisfy { offset, row in
-            let t = row.first?.trimmingCharacters(in: .whitespaces) ?? ""
-            return t.isEmpty || WellNaming.rowIndex(t) == offset
+            WellNaming.rowIndex(row.first ?? "") == offset
         }
 
         guard cornerEmpty, topLooksNumeric, leftLooksAlpha else { return grid }
@@ -89,7 +94,13 @@ enum CSV {
             row.append(field)
             rows.append(row)
         }
-        while let last = rows.last, last.allSatisfy({ $0.isEmpty }) { rows.removeLast() }
+        // Only the artefact of the file's final newline, which is a row of one empty
+        // field. A plate map's blank row arrives as N blank cells and *means* something:
+        // those wells are empty and importing it clears them. Dropping every all-empty
+        // row made the file extension decide which wells changed — the same map cleared
+        // row H as .tsv and left it painted as .csv. This is TSV's rule, which drops
+        // empty lines and keeps a line of tabs.
+        while let last = rows.last, last.count == 1, last[0].isEmpty { rows.removeLast() }
         let width = rows.map(\.count).max() ?? 0
         return rows.map { $0 + Array(repeating: "", count: width - $0.count) }
     }
@@ -234,8 +245,15 @@ enum Exporter {
         sheets.append(legendSheet(layout: layout))
         // Last, so no existing workbook changes shape, and only when the document has a
         // prep setup — which is the opt-in, and why there is no extra save-panel control.
+        // A plan with nothing to make can still have something to say — an added volume
+        // larger than the well comes back with no compounds at all and the refusal in
+        // `warnings` — so the tab has to survive on either. Gating on tubes alone dropped
+        // the sheet from precisely the export whose message the bench most needs, while
+        // the window and the printout (which test `!isEmpty || !allWarnings.isEmpty`)
+        // showed it. A plan with neither still adds no tab, so no empty sheet is emitted.
         if layout.prep?.includeInWorkbook == true,
-           let plan = DilutionPlan.make(from: layout), !plan.isEmpty {
+           let plan = DilutionPlan.make(from: layout),
+           !plan.isEmpty || !plan.allWarnings.isEmpty {
             sheets.append(prepSheet(plan: plan))
         }
         return XLSX.build(sheets: sheets)
@@ -412,7 +430,12 @@ enum Exporter {
                     bold: true, centered: false
                 ),
             ]
-            heading.append(.text(compound.stock.map { "stock \($0.label)" } ?? "no stock set"))
+            // `isUsable`, not just non-nil: a stock of 0 is one nothing can be diluted
+            // from, which is why the plan refuses to use it and warns. Printing
+            // "stock 0 mM" reads as a measured concentration and contradicts both the
+            // window and the printout, which call that "no stock set".
+            let stock = compound.stock.flatMap { $0.isUsable ? "stock \($0.label)" : nil }
+            heading.append(.text(stock ?? "no stock set"))
             heading.append(.text(compound.method.label))
             rows.append(heading)
             rows.append(

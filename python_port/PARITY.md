@@ -93,6 +93,19 @@ Mac `ShortcutsCard`, the README table, the menu item **and this file** in the sa
 - Toolbar icons are simple painted glyphs, not SF Symbols.
 - Preferences are an Ini file (`%APPDATA%\nettilor\pLayout.ini`; `~/.config/nettilor/pLayout.ini` on a Mac), never shared with the native app's defaults.
 
+## Fixed on the Mac, still wrong in the port
+
+Both were pre-existing on both sides and were fixed on the Mac in 1.5. `playout/io/table_io.py`
+mirrors them verbatim.
+
+- **`stripping_plate_headers` accepts an *absent* header.** `if t == "": return True` in the
+  numeric and alphabetic tests means a block whose first row and column are simply unpainted is
+  taken for a header block: a plain paste lands one row up and one column left, and the blank row
+  and column it swallowed are never cleared. Require the label to actually be there.
+- **`while rows and all(cell == "" for cell in rows[-1]): rows.pop()`** drops a genuine blank
+  bottom row of a plate map, so a CSV import leaves those wells alone where the TSV import clears
+  them. Drop only the final-newline artefact — a row of exactly one empty cell.
+
 ## Known quirks reproduced on purpose (fix on the Mac first, then port — never in the port alone)
 
 - Paste ignores a discontiguous (custom) selection for its origin and does not clear it.
