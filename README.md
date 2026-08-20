@@ -236,8 +236,9 @@ this was true still restore the whole document, and say so in their subtitle.
 ## Settings (`⌘,`)
 
 How a plate is drawn is partly a matter of taste rather than of the experiment, so
-those settings live in the Settings window — three tabs, with a live preview below
-them — and follow you between documents instead of travelling inside a `.plate` file.
+those settings live in the Settings window — **Wells**, **Colours**, **Plate Text** and
+**Workspace**, with a live preview below them — and follow you between documents instead
+of travelling inside a `.plate` file.
 
 **Text colour** — *Match the well* picks black or white per condition, whichever is
 legible. *Always black* and *Always white* use one colour throughout: a label that is
@@ -287,9 +288,8 @@ neighbour is its own length, and the longest name is the one that ends up cut sh
 Fitted, the plate measures every name it is going to draw and takes the largest size at
 which all of them fit, then uses it throughout — so the plate reads as one design rather
 than four type sizes. It only ever shrinks, never grows past the size set above, and it
-stops at the same 6 pt floor the per-label fitting has always truncated at: a name long
-enough to need less than that is cut short on its own rather than taking the plate down
-with it.
+stops at 5 pt, below which shrinking stops being a kindness: a name long enough to need
+less than that is cut short on its own rather than taking the plate down with it.
 
 **Canvas** — the background of the board (`⇧⌘K`). The default follows light and dark
 mode; pick a colour and it is used exactly as chosen. The dot grid takes its own contrast

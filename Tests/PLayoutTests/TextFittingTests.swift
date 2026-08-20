@@ -74,6 +74,23 @@ final class TextFittingTests: XCTestCase {
             [label(absurd, available: 46, size: 12)], minimumSize: 6, font: system
         )
         XCTAssertEqual(scale, 0.5, accuracy: 0.0001, "6 pt of a 12 pt tier")
+
+        XCTAssertEqual(PlateCanvasView.minimumLabelSize, 5,
+                       "and the floor the plate actually uses is 5 pt")
+    }
+
+    /// The floor limits how far `drawFitted` shrinks a label *on its own*. It must never
+    /// override the size it was handed — a fitted plate arrives already at the size the
+    /// whole plate agreed on, and clamping it back up would truncate the very label the
+    /// plate was sized for, which is what made lowering the floor do nothing at all.
+    func testAFloorNeverOverridesTheSizeALabelWasGiven() {
+        // Unchanged where the max is comfortably above it.
+        XCTAssertEqual(PlateCanvasView.fittedFloor(maxFontSize: 13, minFontSize: nil), 7)
+        XCTAssertEqual(PlateCanvasView.fittedFloor(maxFontSize: 13, minFontSize: 11), 11,
+                       "a tier keeps its own floor")
+        // And never above the maximum, however small that is.
+        XCTAssertEqual(PlateCanvasView.fittedFloor(maxFontSize: 5.2, minFontSize: nil), 5.2)
+        XCTAssertEqual(PlateCanvasView.fittedFloor(maxFontSize: 4, minFontSize: 3.4), 4)
     }
 
     /// Tiers are measured as they are drawn — the headline line is bigger and semibold,

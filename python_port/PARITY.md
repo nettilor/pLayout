@@ -68,10 +68,10 @@ Mac `ShortcutsCard`, the README table, the menu item **and this file** in the sa
 | Empty-well background colour (Overview tiles, exports, print) | ✅ | M6 | |
 | Plate typeface and text size | ✅ | M6 | |
 | Sidebar: per-factor condition counts | ✅ | M6 | |
-| Settings window in tabs | ✅ | M6 | |
+| Settings window in tabs | 🚧 | M6 | four tabs since 1.5: Wells / Colours / Plate Text / Workspace — three could not hold nine sections without clipping |
 | Canvas board background colour | ⏳ | — | 1.5; dot grid takes its contrast from it |
 | Overview block outline colour and thickness | ⏳ | — | 1.5; default colour follows light/dark, thickness capped at a quarter of the cell |
-| One size per plate, fitted to the wells | ⏳ | — | 1.5; a second multiplier over the plan, measured against every painted name; closes its own fit loop and floors at 6 pt |
+| One size per plate, fitted to the wells | ⏳ | — | 1.5; a second multiplier over the plan, measured against every painted name; closes its own fit loop and floors at 5 pt — the per-label floor must not clamp a size it was handed |
 
 ## App and distribution
 

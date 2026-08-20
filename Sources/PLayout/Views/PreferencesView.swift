@@ -19,12 +19,14 @@ struct PreferencesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             TabView {
-                displayTab
-                    .tabItem { Label("Display", systemImage: "square.grid.3x3") }
+                wellsTab
+                    .tabItem { Label("Wells", systemImage: "square.grid.3x3") }
                 coloursTab
                     .tabItem { Label("Colours", systemImage: "paintpalette") }
                 typeTab
                     .tabItem { Label("Plate Text", systemImage: "textformat") }
+                workspaceTab
+                    .tabItem { Label("Workspace", systemImage: "macwindow") }
             }
             .padding([.horizontal, .top], 14)
 
@@ -56,7 +58,7 @@ struct PreferencesView: View {
         .frame(width: 460, height: 660)
     }
 
-    private var displayTab: some View {
+    private var wellsTab: some View {
         tabBody {
             section("Well labels") {
                 choice("Text colour", selection: $preferences.wellTextStyle)
@@ -69,15 +71,6 @@ struct PreferencesView: View {
             section("New documents") {
                 choice("Well shape", selection: $preferences.newDocumentWellShape)
                 note(preferences.newDocumentWellShape.note)
-            }
-            section("Sidebar") {
-                Toggle(
-                    "Show each factor's number of conditions",
-                    isOn: $preferences.showFactorConditionCounts
-                )
-                .toggleStyle(.checkbox)
-                .font(.callout)
-                note("A count at the end of every factor row, the way conditions show how many wells they cover.")
             }
         }
     }
@@ -102,21 +95,6 @@ struct PreferencesView: View {
                 note(preferences.emptyWellColorHex == nil
                     ? "The default follows light and dark mode."
                     : "A chosen colour is used as it is, everywhere — light mode, dark mode, Overview's backdrop, exports and print.")
-            }
-            section("Canvas") {
-                HStack(spacing: 10) {
-                    ColorPicker("", selection: canvasBackgroundColor, supportsOpacity: false)
-                        .labelsHidden()
-                    Text("Background of the board")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Reset to Default") { preferences.canvasBackgroundColorHex = nil }
-                        .disabled(preferences.canvasBackgroundColorHex == nil)
-                }
-                note(preferences.canvasBackgroundColorHex == nil
-                    ? "The default follows light and dark mode. The board is behind the cards on the canvas (⇧⌘K); it is never exported or printed."
-                    : "Used exactly as chosen, in both light and dark mode. The dot grid takes its own contrast from it, so it stays visible on a dark board as well as a pale one.")
             }
             section("Overview blocks") {
                 HStack(spacing: 10) {
@@ -148,6 +126,35 @@ struct PreferencesView: View {
                     tile: preferences.emptyWellFill(exportMode: false)
                 )
                 note("Drawn in Overview when “Group identical wells” is on. On a dense plate the line is capped at a quarter of the well, however thick it is set here.")
+            }
+        }
+    }
+
+    private var workspaceTab: some View {
+        tabBody {
+            section("Canvas") {
+                HStack(spacing: 10) {
+                    ColorPicker("", selection: canvasBackgroundColor, supportsOpacity: false)
+                        .labelsHidden()
+                    Text("Background of the board")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Reset to Default") { preferences.canvasBackgroundColorHex = nil }
+                        .disabled(preferences.canvasBackgroundColorHex == nil)
+                }
+                note(preferences.canvasBackgroundColorHex == nil
+                    ? "The default follows light and dark mode. The board is behind the cards on the canvas (⇧⌘K); it is never exported or printed."
+                    : "Used exactly as chosen, in both light and dark mode. The dot grid takes its own contrast from it, so it stays visible on a dark board as well as a pale one.")
+            }
+            section("Sidebar") {
+                Toggle(
+                    "Show each factor's number of conditions",
+                    isOn: $preferences.showFactorConditionCounts
+                )
+                .toggleStyle(.checkbox)
+                .font(.callout)
+                note("A count at the end of every factor row, the way conditions show how many wells they cover.")
             }
         }
     }

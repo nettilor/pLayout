@@ -806,6 +806,23 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         width - (alignment == .center ? max(2, width * 0.12) : 1)
     }
 
+    /// How small a label may be made before shrinking it further stops being a kindness
+    /// and truncation is the honest answer. One number, shared by the per-label fit and
+    /// the per-plate one, so the two cannot stop at different sizes.
+    static let minimumLabelSize: CGFloat = 5
+
+    /// How small `drawFitted` may shrink a label on its own before it gives up and
+    /// truncates instead.
+    ///
+    /// A floor per tier keeps an inactive label from shrinking past the active one and
+    /// inverting the visual hierarchy — but it is a limit on how far *this* shrinks a
+    /// label, and it may never override the size it was handed. A fitted plate arrives
+    /// already at the size the whole plate agreed on, and clamping that back up would
+    /// truncate the very label the plate was sized for.
+    static func fittedFloor(maxFontSize: CGFloat, minFontSize: CGFloat?) -> CGFloat {
+        min(maxFontSize, max(minimumLabelSize, minFontSize ?? 7))
+    }
+
     /// One label a plate is going to draw, and the width it has to fit into.
     struct FittedLabel: Equatable {
         var text: String
@@ -828,7 +845,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     /// `minimumSize`, the same floor `drawFitted` gives up and truncates at. A name long
     /// enough to need less than that pays for itself instead of the plate paying for it.
     static func fitScale(
-        _ labels: [FittedLabel], minimumSize: CGFloat = 6,
+        _ labels: [FittedLabel], minimumSize: CGFloat = minimumLabelSize,
         font: (CGFloat, NSFont.Weight) -> NSFont = {
             Preferences.shared.canvasFont(ofSize: $0, weight: $1)
         }
@@ -1329,9 +1346,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         guard !trimmed.isEmpty, rect.width > 8 else { return }
         let available = Self.fittedWidth(of: rect.width, alignment: alignment)
         guard available > 2 else { return }
-        // A floor per tier keeps an inactive label from shrinking past the active one
-        // and inverting the visual hierarchy.
-        let floorSize = max(6, min(minFontSize ?? 7, maxFontSize))
+        let floorSize = Self.fittedFloor(maxFontSize: maxFontSize, minFontSize: minFontSize)
 
         let measured = (trimmed as NSString)
             .size(withAttributes: [.font: canvasFont(ofSize: maxFontSize, weight: weight)]).width
