@@ -89,6 +89,16 @@ final class PrepWindowController: NSWindowController, NSWindowDelegate {
         window?.title = "Prep — \(title)"
     }
 
+    /// Hands this window the document's undo manager.
+    ///
+    /// It is a hand-built `NSWindow`, not a document window, so nothing in the responder
+    /// chain above it offers one: every prep edit *was* undoable, but ⌘Z while the prep
+    /// window was key did nothing at all and Edit ▸ Undo stayed greyed out — you had to
+    /// click back to the plate first to undo what you had just typed here.
+    func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? {
+        editor?.undoManager
+    }
+
     func windowDidBecomeKey(_ notification: Notification) {
         guard let editor else { return }
         PrepWindowRegistry.shared.noteBecameKey(editor)

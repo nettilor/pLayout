@@ -26,6 +26,29 @@ struct PrepView: View {
             footer
         }
         .frame(minWidth: 560, idealWidth: 660, minHeight: 420, idealHeight: 760)
+        .background(undoShortcuts)
+    }
+
+    /// ⌘Z and ⇧⌘Z, for this window only.
+    ///
+    /// The Edit menu's Undo binds to the focused SwiftUI *scene*, and this is a plain
+    /// `NSWindow` — so every prep edit was undoable and ⌘Z here did nothing at all until
+    /// you clicked back to the plate window. Scoped to this view rather than by replacing
+    /// the menu's own group, which would take ⌘Z away from every text field in the app.
+    /// Zero-sized: the menu item stays the discoverable route, this only makes the key
+    /// work where the edit was made.
+    private var undoShortcuts: some View {
+        ZStack {
+            Button("Undo") { editor.undoManager?.undo() }
+                .keyboardShortcut("z", modifiers: .command)
+                .disabled(editor.undoManager?.canUndo != true)
+            Button("Redo") { editor.undoManager?.redo() }
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+                .disabled(editor.undoManager?.canRedo != true)
+        }
+        .opacity(0)
+        .frame(width: 0, height: 0)
+        .accessibilityHidden(true)
     }
 
     // MARK: - Settings
