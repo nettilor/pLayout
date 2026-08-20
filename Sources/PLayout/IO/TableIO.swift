@@ -126,12 +126,12 @@ enum WorkbookLayout: String, CaseIterable, Identifiable, Codable {
 
     /// Remembered between exports, since a lab tends to want the same shape every time.
     static var remembered: WorkbookLayout {
-        UserDefaults.standard.string(forKey: defaultsKey)
+        AppDefaults.store.string(forKey: defaultsKey)
             .flatMap(WorkbookLayout.init(rawValue:)) ?? .sheetPerFactor
     }
 
     func remember() {
-        UserDefaults.standard.set(rawValue, forKey: Self.defaultsKey)
+        AppDefaults.store.set(rawValue, forKey: Self.defaultsKey)
     }
 }
 
@@ -145,12 +145,12 @@ enum WorkbookScope: String, CaseIterable, Codable {
     private static let defaultsKey = "workbookScope"
 
     static var remembered: WorkbookScope {
-        UserDefaults.standard.string(forKey: defaultsKey)
+        AppDefaults.store.string(forKey: defaultsKey)
             .flatMap(WorkbookScope.init(rawValue:)) ?? .allPlates
     }
 
     func remember() {
-        UserDefaults.standard.set(rawValue, forKey: Self.defaultsKey)
+        AppDefaults.store.set(rawValue, forKey: Self.defaultsKey)
     }
 }
 
@@ -171,14 +171,14 @@ struct WorkbookJointMap {
 
     static var remembered: WorkbookJointMap {
         WorkbookJointMap(
-            enabled: UserDefaults.standard.bool(forKey: enabledKey),
-            separator: UserDefaults.standard.string(forKey: separatorKey) ?? ""
+            enabled: AppDefaults.store.bool(forKey: enabledKey),
+            separator: AppDefaults.store.string(forKey: separatorKey) ?? ""
         )
     }
 
     func remember() {
-        UserDefaults.standard.set(enabled, forKey: Self.enabledKey)
-        UserDefaults.standard.set(separator, forKey: Self.separatorKey)
+        AppDefaults.store.set(enabled, forKey: Self.enabledKey)
+        AppDefaults.store.set(separator, forKey: Self.separatorKey)
     }
 }
 

@@ -539,20 +539,22 @@ final class WorkbookTests: XCTestCase {
 
     func testWorkbookScopeIsRememberedLikeTheArrangement() {
         let key = "workbookScope"
-        let previous = UserDefaults.standard.string(forKey: key)
+        // `AppDefaults.store`, not `UserDefaults.standard`: under XCTest that is a scratch
+        // domain, so this cannot reach the preferences of the app you actually use.
+        let previous = AppDefaults.store.string(forKey: key)
         defer {
             if let previous {
-                UserDefaults.standard.set(previous, forKey: key)
+                AppDefaults.store.set(previous, forKey: key)
             } else {
-                UserDefaults.standard.removeObject(forKey: key)
+                AppDefaults.store.removeObject(forKey: key)
             }
         }
 
-        UserDefaults.standard.removeObject(forKey: key)
+        AppDefaults.store.removeObject(forKey: key)
         XCTAssertEqual(WorkbookScope.remembered, .allPlates)
         WorkbookScope.activePlate.remember()
         XCTAssertEqual(WorkbookScope.remembered, .activePlate)
-        UserDefaults.standard.set("everything-twice", forKey: key)
+        AppDefaults.store.set("everything-twice", forKey: key)
         XCTAssertEqual(WorkbookScope.remembered, .allPlates, "garbage should fall back")
     }
 

@@ -212,7 +212,7 @@ struct PreferencesView: View {
                 ) ?? fill
                 return Color(nsColor: flat)
             },
-            set: { preferences.emptyWellColorHex = NSColor($0).hexString }
+            set: { preferences.emptyWellColorHex = chosen($0, over: preferences.emptyWellFill(exportMode: false)) }
         )
     }
 
@@ -221,7 +221,7 @@ struct PreferencesView: View {
     private var canvasBackgroundColor: Binding<Color> {
         Binding(
             get: { Color(nsColor: preferences.canvasBackground) },
-            set: { preferences.canvasBackgroundColorHex = NSColor($0).hexString }
+            set: { preferences.canvasBackgroundColorHex = chosen($0, over: preferences.canvasBackground) }
         )
     }
 
@@ -237,8 +237,19 @@ struct PreferencesView: View {
                 ) ?? ink
                 return Color(nsColor: flat)
             },
-            set: { preferences.groupOutlineColorHex = NSColor($0).hexString }
+            set: { preferences.groupOutlineColorHex = chosen($0, over: preferences.groupOutlineColor(exportMode: false)) }
         )
+    }
+
+    /// A colour only counts as *chosen* when it differs from what is already showing.
+    ///
+    /// `ColorPicker` echoes its binding back through `set` as a concrete colour, so
+    /// without this merely opening the Settings window froze the appearance-following
+    /// default into a fixed hex — turning "no opinion" into an opinion nobody expressed,
+    /// and lighting up Reset to Default for a colour the user never picked.
+    private func chosen(_ new: Color, over current: NSColor) -> String? {
+        let hex = NSColor(new).hexString
+        return hex == current.hexString ? nil : hex
     }
 
     private func section(

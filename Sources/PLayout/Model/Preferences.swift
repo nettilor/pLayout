@@ -144,6 +144,23 @@ enum NewConditionColors: String, Codable, DisplayChoice {
     }
 }
 
+/// Where everything the app remembers *outside* a document is kept.
+///
+/// Under XCTest this is a scratch domain rather than the real one. A test that changes a
+/// setting normally puts it back, but a run killed before its cleanup cannot — which is
+/// how a test once left someone's Overview outlines bright red at 3 pt. Tests should not
+/// be able to reach the preferences of the app you actually use.
+enum AppDefaults {
+    static let store: UserDefaults = {
+        guard NSClassFromString("XCTestCase") != nil else { return .standard }
+        let name = "com.nettilor.playout.tests"
+        guard let scratch = UserDefaults(suiteName: name) else { return .standard }
+        // Cleared on the way in, so one run cannot inherit another's leftovers.
+        scratch.removePersistentDomain(forName: name)
+        return scratch
+    }()
+}
+
 /// App-wide display settings, shared by every open document and remembered between
 /// launches. Deliberately *not* part of `Layout`: this is how someone likes to look at
 /// a plate, not a property of the experiment, and it should not travel in a `.plate`
@@ -355,7 +372,7 @@ final class Preferences: ObservableObject {
     private static let factorConditionCountsKey = "showFactorConditionCounts"
     private static let checkForUpdatesKey = "checkForUpdatesAutomatically"
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = AppDefaults.store) {
         self.defaults = defaults
         // Decoded leniently, like the document's own display settings: a value written
         // by a newer build should fall back rather than refuse to launch.

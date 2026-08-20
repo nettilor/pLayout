@@ -78,6 +78,9 @@ final class CanvasBoardView: NSView {
             cards.removeValue(forKey: id)
         }
 
+        // The real order is restored here, so the temporary lift a press applies never
+        // outlives the gesture that asked for it.
+        for card in cards.values { card.normaliseDepth() }
         // Array order is z-order, and the plate being edited is always on top of it.
         // Raised here rather than on the press itself: a click has to bring a card
         // forward, but writing the document mid-press is what cancelled drags.
@@ -354,6 +357,22 @@ final class CanvasCardView: NSView {
         return super.hitTest(point)
     }
 
+    /// Lifts this card above its neighbours the instant it is pressed.
+    ///
+    /// The **layer's** z-position, not the view order: re-adding a view during a press
+    /// cancels the mouse tracking AppKit is about to send it — proved twice, once via a
+    /// reload and once by doing it here directly, both times leaving a card that would
+    /// not drag at all. Compositing order is enough to make it look right for the length
+    /// of the gesture, and `reload()` puts the real subview order back the moment the
+    /// hierarchy is safe to touch again, which is also when hit-testing starts to matter.
+    func raiseNow() {
+        layer?.zPosition = 1
+    }
+
+    func normaliseDepth() {
+        layer?.zPosition = 0
+    }
+
     func refresh(item: CanvasItem, prepPlan: DilutionPlan?) {
         if let note = content as? CanvasNoteView {
             note.text = item.text
@@ -500,8 +519,12 @@ final class CanvasCardView: NSView {
             return
         }
         // Marked as dragging *before* anything that could touch the document: a reload
-        // mid-press re-adds this very view and cancels the drag AppKit is about to send.
+        // mid-press resets this card's frame out from under the drag AppKit is about to
+        // send it.
         isDragging = true
+        // Raised on the press, not on release, so a card comes forward the moment you
+        // take hold of it rather than snapping there once you let go.
+        raiseNow()
         onActivate?()
         // Anchored in the **board's** coordinates. Anchoring in the card's own meant the
         // reference point moved with the card as it was dragged, which is what made the

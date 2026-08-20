@@ -19,11 +19,11 @@ final class ImageExportAccessory: NSView {
     /// Remembered between exports, like the workbook's arrangement: a figure for a
     /// paper tends to want the same treatment every time.
     static var remembered: Bool {
-        UserDefaults.standard.object(forKey: defaultsKey) as? Bool ?? true
+        AppDefaults.store.object(forKey: defaultsKey) as? Bool ?? true
     }
 
     static func remember(_ value: Bool) {
-        UserDefaults.standard.set(value, forKey: defaultsKey)
+        AppDefaults.store.set(value, forKey: defaultsKey)
     }
 
     init(includesGroups: Bool) {

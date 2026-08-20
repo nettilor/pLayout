@@ -1247,6 +1247,9 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
 
     override func mouseDown(with event: NSEvent) {
         guard let editor, shownPlate != nil else { return }
+        // On the board, a press anywhere on a card brings it forward at once — including
+        // presses that land on the plate itself rather than on the card's chrome.
+        (superview as? CanvasCardView)?.raiseNow()
         // A click on a read-only card means "edit that one instead" and nothing else.
         // Not also a select, and certainly not a paint: an armed brush plus a card click
         // is how a whole plate would get overwritten by one stray press.
