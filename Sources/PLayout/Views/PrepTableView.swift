@@ -31,7 +31,7 @@ final class PrepTableView: NSView {
         case title(String)
         case setupLine(String)
         case compoundHeading(name: String, colour: NSColor?, detail: String)
-        case columnHeader
+        case columnHeader(unit: String)
         case tube(DilutionPlan.Step, isVehicle: Bool, flagged: Bool)
         case spacer
         case warningsHeading
@@ -48,8 +48,32 @@ final class PrepTableView: NSView {
     private var laidOutWidth: CGFloat = 0
 
     private let inset: CGFloat = 16
-    private let columnWeights: [CGFloat] = [0.13, 0.14, 0.08, 0.15, 0.13, 0.16, 0.13]
-    private let columnTitles = ["Dose", "In tube", "Wells", "From", "Take", "+ Diluent", "= Make"]
+    /// One column of a drug's block. Held together rather than as parallel arrays so a
+    /// column that is not shown cannot slide the alignment of the ones after it.
+    private struct Column {
+        let title: String
+        let weight: CGFloat
+        var alignment: NSTextAlignment = .right
+    }
+
+    /// Every heading names its unit, because a bare "0.9" on a bench sheet is a question,
+    /// not an instruction. The concentrations are in the drug's own unit — each drug has
+    /// one — and the volumes are always µL.
+    private func columns(unit: String) -> [Column] {
+        let suffix = unit.isEmpty ? "" : " (\(unit))"
+        var columns = [Column(title: "Dose\(suffix)", weight: 0.15, alignment: .left)]
+        if plan?.setup.tubesAreConcentrated == true {
+            columns.append(Column(title: "In tube\(suffix)", weight: 0.15))
+        }
+        columns += [
+            Column(title: "Wells", weight: 0.07),
+            Column(title: "From", weight: 0.12, alignment: .left),
+            Column(title: "Take (µL)", weight: 0.14),
+            Column(title: "+ Diluent (µL)", weight: 0.19),
+            Column(title: "= Make (µL)", weight: 0.18),
+        ]
+        return columns
+    }
 
     private var titleFont: NSFont { .systemFont(ofSize: 15, weight: .semibold) }
     private var headingFont: NSFont { .systemFont(ofSize: 12, weight: .semibold) }
@@ -126,7 +150,7 @@ final class PrepTableView: NSView {
                 ),
                 22
             )
-            add(.columnHeader, 18)
+            add(.columnHeader(unit: compound.unit), 18)
             for step in compound.steps {
                 add(.tube(step, isVehicle: step.isVehicle, flagged: !step.warnings.isEmpty), 17)
             }
@@ -200,15 +224,27 @@ final class PrepTableView: NSView {
         case .neatSolvent: from = "solvent"
         case .diluentOnly: from = "—"
         }
-        return [
-            step.isVehicle ? "vehicle" : step.doseName,
-            step.isVehicle ? "—" : PlateEditor.formatValue(step.working, significantDigits: 4),
+        var cells = [step.isVehicle ? "vehicle" : step.doseName]
+        if plan.setup.tubesAreConcentrated {
+            cells.append(
+                step.isVehicle ? "—" : PlateEditor.formatValue(step.working, significantDigits: 4)
+            )
+        }
+        cells += [
             "\(step.wells)",
             from,
             volume(step.sourceVolume),
             volume(step.diluent),
             volume(step.total),
         ]
+        return cells
+    }
+
+    /// The column headings as laid out, for tests: what a heading says is the whole
+    /// point of these columns, and a PDF cannot be asked.
+    var headingsForTesting: [String] {
+        guard let unit = plan?.compounds.first?.unit else { return [] }
+        return columns(unit: unit).map(\.title)
     }
 
     // MARK: - Drawing
@@ -256,21 +292,26 @@ final class PrepTableView: NSView {
                      in: NSRect(x: x + nameWidth + 10, y: line.minY,
                                 width: max(0, line.maxX - x - nameWidth - 10), height: line.height),
                      font: noteFont, colour: quiet)
-            case .columnHeader:
+            case .columnHeader(let unit):
                 NSColor.separatorColor.setStroke()
                 let rule = NSBezierPath()
                 rule.move(to: NSPoint(x: line.minX, y: line.maxY - 0.5))
                 rule.line(to: NSPoint(x: line.maxX, y: line.maxY - 0.5))
                 rule.lineWidth = 0.5
                 rule.stroke()
-                drawColumns(columnTitles, in: line, font: noteFont, colour: quiet)
+                let columns = self.columns(unit: unit)
+                drawColumns(columns.map(\.title), in: line, columns: columns,
+                            font: noteFont, colour: quiet)
             case .tube(let step, let isVehicle, let flagged):
                 if isVehicle {
                     NSColor.quaternaryLabelColor.withAlphaComponent(exportMode ? 0.08 : 0.12).setFill()
                     line.fill()
                 }
+                // The unit only changes the *titles*, so a body row can ask for the
+                // layout without knowing which drug's block it is in.
                 drawColumns(
-                    cells(for: step, plan: plan), in: line, font: bodyFont,
+                    cells(for: step, plan: plan), in: line, columns: columns(unit: ""),
+                    font: bodyFont,
                     colour: flagged ? NSColor.systemOrange.blended(withFraction: 0.35, of: ink) ?? ink : ink
                 )
             case .spacer:
@@ -298,17 +339,23 @@ final class PrepTableView: NSView {
         }
     }
 
-    private func drawColumns(_ cells: [String], in line: NSRect, font: NSFont, colour: NSColor) {
+    private func drawColumns(
+        _ cells: [String], in line: NSRect, columns: [Column], font: NSFont, colour: NSColor
+    ) {
+        // Normalised, so dropping a column widens the rest rather than leaving the table
+        // short of the margin.
+        let total = columns.reduce(0) { $0 + $1.weight }
+        guard total > 0 else { return }
         var x = line.minX
         for (index, text) in cells.enumerated() {
-            guard index < columnWeights.count else { break }
-            let width = line.width * columnWeights[index]
-            // Names left, numbers right — the two number columns people compare are
+            guard index < columns.count else { break }
+            let column = columns[index]
+            let width = line.width * column.weight / total
+            // Names left, numbers right: the two columns people compare down the page are
             // "Take" and "= Make", and a ragged right edge makes that comparison work.
-            let alignment: NSTextAlignment = index == 0 || index == 3 ? .left : .right
             draw(
                 text, in: NSRect(x: x, y: line.minY, width: width - 6, height: line.height),
-                font: font, colour: colour, alignment: alignment
+                font: font, colour: colour, alignment: column.alignment
             )
             x += width
         }

@@ -580,6 +580,36 @@ final class PrepTableTests: XCTestCase {
     }
 
     /// AppKit will happily slice a page through the middle of a row.
+    /// A bare "0.9" on a bench sheet is a question, not an instruction: every heading has
+    /// to say what its numbers are in. Concentrations take the drug's own unit, volumes
+    /// are always µL.
+    func testEveryColumnHeadingNamesItsUnit() throws {
+        let headings = try table(layout(doses: ["10", "3.33", "1.11"])).headingsForTesting
+        // Concentrations in the drug's own unit, volumes always in µL.
+        XCTAssertTrue(headings.contains("Dose (µM)"), headings.description)
+        for volume in ["Take (µL)", "+ Diluent (µL)", "= Make (µL)"] {
+            XCTAssertTrue(headings.contains(volume), headings.description)
+        }
+        XCTAssertFalse(headings.contains("Take"), "the bare heading is the one being replaced")
+    }
+
+    /// "In tube" is the tube's own concentration, which only differs from the dose when
+    /// the well takes less than its whole volume from it. At 1× it was the same number in
+    /// two columns — which is exactly what made the heading read as a mystery.
+    func testInTubeIsOnlyShownWhenItDiffersFromTheDose() throws {
+        var oneToOne = layout(doses: ["10", "3.33", "1.11"])
+        oneToOne.prep?.addedVolume = 100      // the well takes all of its volume from the tube
+        let plain = try table(oneToOne)
+        XCTAssertFalse(plain.headingsForTesting.contains { $0.hasPrefix("In tube") },
+                       plain.headingsForTesting.description)
+
+        var concentrated = oneToOne
+        concentrated.prep?.addedVolume = 10   // 10× tubes
+        let folded = try table(concentrated)
+        XCTAssertTrue(folded.headingsForTesting.contains("In tube (µM)"),
+                      folded.headingsForTesting.description)
+    }
+
     func testAPageNeverBreaksThroughTheMiddleOfARow() throws {
         let view = try table(layout(doses: ["10", "3.33", "1.11", "0.37", "0.123", "0.0412"]))
         let height = view.frame.height

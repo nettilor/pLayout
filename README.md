@@ -465,6 +465,7 @@ which are drugs and turn one off again. A factor with no stock yet still gets it
 | | |
 | --- | --- |
 | **Both volumes** | The volume in the well *after* the addition, and the volume added. Their ratio is what the tubes are: 10 µL into a 100 µL well means 10× working solutions; adding all 100 µL means the tubes are at the final concentration. |
+| **Dose and In tube** | *Dose* is what the well ends up at; *In tube* is what you actually make the tube up to, which is the dose times that ratio. They are the same number when the well takes its whole volume from the tube, so the column only appears when it has something of its own to say. Every heading names its unit — concentrations in the drug's own, volumes always in µL. |
 | **Serial or not** | A constant fold series — what Series Fill writes — is made serially, each tube from the one above. A linear or hand-typed series cannot be, so each tube is made straight from the stock. It says which it did, every time. |
 | **Total volumes** | The part worth having software for: each tube holds enough for its own wells **and** for the transfer that makes the next one, and the well counts come from the plate itself. |
 | **Extra** | A percentage, a percentage with a floor, or a flat number of µL — whichever matches how your bench thinks about dead volume. |

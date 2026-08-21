@@ -546,6 +546,13 @@ struct PrepSetup: Codable, Hashable {
         guard addedVolume > 0 else { return 1 }
         return wellVolume / addedVolume
     }
+
+    /// Whether a tube is at a different concentration from the well it goes into.
+    ///
+    /// When it is not — the whole well volume comes from the tube — the tube's own
+    /// concentration *is* the dose, and printing both is the same number in two columns.
+    /// That is what made "In tube" read as a mystery rather than a fact.
+    var tubesAreConcentrated: Bool { abs(foldOverWell - 1) > 0.0001 }
 }
 
 // MARK: - The board

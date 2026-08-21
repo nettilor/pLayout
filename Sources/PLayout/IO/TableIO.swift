@@ -499,6 +499,14 @@ enum Exporter {
         line("Diluent", setup.diluent)
 
         for compound in plan.compounds where !compound.steps.isEmpty {
+            // Every heading names its unit: a bare "0.9" on a bench sheet is a question,
+            // not an instruction. Concentrations are in this drug's own unit, volumes are
+            // always µL — and "In tube" is only shown when it differs from the dose,
+            // which at 1× it does not.
+            let suffix = compound.unit.isEmpty ? "" : " (\(compound.unit))"
+            var headings = ["Dose\(suffix)"]
+            if setup.tubesAreConcentrated { headings.append("In tube\(suffix)") }
+            headings += ["Wells", "From", "Take (µL)", "+ Diluent (µL)", "= Make (µL)"]
             rows.append([])
             var heading = [
                 XLSX.Cell(
@@ -518,8 +526,7 @@ enum Exporter {
             heading.append(.text(compound.method.label))
             rows.append(heading)
             rows.append(
-                ["Dose", "In tube", "Wells", "From", "Take (µL)", "+ Diluent (µL)", "= Make (µL)"]
-                    .map { XLSX.Cell.header($0) }
+                headings.map { XLSX.Cell.header($0) }
             )
             for step in compound.steps {
                 let from: String
@@ -529,15 +536,20 @@ enum Exporter {
                 case .neatSolvent: from = "solvent"
                 case .diluentOnly: from = "—"
                 }
-                rows.append([
-                    .text(step.isVehicle ? "vehicle" : step.doseName),
-                    step.isVehicle ? .text("—") : XLSX.Cell(value: .number(step.working)),
+                var cells = [XLSX.Cell.text(step.isVehicle ? "vehicle" : step.doseName)]
+                if setup.tubesAreConcentrated {
+                    cells.append(
+                        step.isVehicle ? .text("—") : XLSX.Cell(value: .number(step.working))
+                    )
+                }
+                cells += [
                     XLSX.Cell(value: .number(Double(step.wells))),
                     .text(from),
                     volume(step.sourceVolume),
                     volume(step.diluent),
                     volume(step.total),
-                ])
+                ]
+                rows.append(cells)
             }
         }
 
@@ -551,7 +563,9 @@ enum Exporter {
         }
 
         return XLSX.Sheet(
-            name: "Prep", rows: rows, columnWidths: [14, 12, 8, 12, 14, 16, 15],
+            name: "Prep", rows: rows,
+            columnWidths: setup.tubesAreConcentrated
+                ? [16, 14, 8, 12, 14, 16, 15] : [16, 8, 12, 14, 16, 15],
             freezeRows: 0, freezeCols: 0
         )
     }
