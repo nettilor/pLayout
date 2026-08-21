@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// What goes in the prep window: the bench parameters at the top, the stocks under them,
+/// What goes in the prep window: the bench parameters at the top, the drugs under them,
 /// and the table they produce below — recomputed on every change, the way Series Fill's
 /// preview strip is.
 struct PrepView: View {
@@ -18,7 +18,7 @@ struct PrepView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             settings
-            stocks
+            dilutions
             Divider()
             table
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -59,26 +59,11 @@ struct PrepView: View {
     /// with none of that.
     private var settings: some View {
         VStack(alignment: .leading, spacing: 14) {
-            section("What is being made") {
-                labelled("Doses") {
-                    Picker("", selection: doseFactorSelection) {
-                        Text("None").tag(UUID?.none)
-                        ForEach(editor.layout.factors) { factor in
-                            Text(factor.displayName).tag(UUID?.some(factor.id))
-                        }
-                    }
-                    .labelsHidden()
-                }
-                labelled("Compounds") {
-                    Picker("", selection: field(\.compoundFactorID, "Prep Compound Factor")) {
-                        Text("None — one series").tag(UUID?.none)
-                        ForEach(editor.layout.factors.filter { $0.id != setup.doseFactorID }) { factor in
-                            Text(factor.name).tag(UUID?.some(factor.id))
-                        }
-                    }
-                    .labelsHidden()
-                }
-                if editor.layout.plates.count > 1 {
+            // No pickers any more: which factors are drugs is said on the factors
+            // themselves, in the list below and in the sidebar. All that is left to
+            // choose here is which plate the counts come from.
+            if editor.layout.plates.count > 1 {
+                section("What is being made") {
                     labelled("Plates") {
                         Picker("", selection: plateScopeSelection) {
                             Text("All plates").tag(UUID?.none)
@@ -196,40 +181,31 @@ struct PrepView: View {
             .multilineTextAlignment(.trailing)
     }
 
-    // MARK: - Stocks
+    // MARK: - Dilutions
 
+    /// Every factor, not only the marked ones — the unticked boxes are what tell you the
+    /// feature exists at all, now that there is no picker to teach you. The number and
+    /// unit are disabled rather than hidden: this window has no scroll view, and a
+    /// section that changes height as you tick would make the table below it jump.
     @ViewBuilder
-    private var stocks: some View {
-        let compounds = editor.layout.factor(id: setup.compoundFactorID)
+    private var dilutions: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(compounds.map { "Stocks — \($0.name)" } ?? "Stock")
+            Text("Made by dilution")
                 .font(.headline)
-            if let compounds {
-                if compounds.levels.isEmpty {
-                    Text("That factor has no conditions yet.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                ForEach(compounds.levels) { level in
-                    StockRow(
-                        name: level.name, colorHex: level.colorHex, stock: level.stock,
-                        defaultUnit: defaultStockUnit,
-                        set: { editor.setStock($0, for: level.id, in: compounds.id) }
-                    )
-                }
-            } else {
+            if editor.layout.factors.isEmpty {
+                Text("This document has no factors yet.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(editor.layout.factors) { factor in
                 StockRow(
-                    name: "All wells", colorHex: nil, stock: setup.stock,
-                    defaultUnit: defaultStockUnit,
-                    // Filtered exactly as `setStock` filters a compound's: a unit typed
-                    // before a number is not a stock, and storing `0 mM` put "stock 0 mM"
-                    // in the workbook where the window and the printout both say "no
-                    // stock set".
-                    set: { stock in
-                        editor.updatePrep("Stock Concentration") {
-                            $0.stock = stock?.isUsable == true ? stock : nil
-                        }
-                    }
+                    name: factor.name,
+                    colorHex: factor.levels.first?.colorHex,
+                    isDilution: factor.dilution != nil,
+                    stock: factor.dilution?.stock,
+                    defaultUnit: factor.unit,
+                    setIsDilution: { editor.setFactorIsDilution(factor.id, $0) },
+                    set: { editor.setFactorStock(factor.id, stock: $0) }
                 )
             }
         }
@@ -237,29 +213,23 @@ struct PrepView: View {
         .padding(.vertical, 10)
     }
 
-    /// One condition's stock.
-    ///
-    /// A `View` rather than a function so the unit has somewhere of its own to live.
-    /// Clearing the number clears the whole `StockConcentration` in the model — "not
-    /// set" is one state, not a value and a unit that can be half-present — so with
-    /// nowhere else to keep it the unit went with the number, and the next figure typed
-    /// silently fell back to the dose factor's unit. Correcting a 10 mM stock to 5 the
-    /// ordinary way (select, delete, type 5) stored **5 µM**: a thousandfold error on a
-    /// printed sheet, with nothing anywhere to warn you. It also means a unit typed
-    /// before a number survives, where before it was dropped on the floor.
+    /// One factor's row in the list: the toggle that says it is a drug, and the stock it
+    /// is diluted from. The number and unit come from `StockField`, which the sidebar
+    /// uses too — the unit-keeping it does is the same fix in both places.
     private struct StockRow: View {
         let name: String
         let colorHex: String?
+        let isDilution: Bool
         let stock: StockConcentration?
         let defaultUnit: String
+        let setIsDilution: (Bool) -> Void
         let set: (StockConcentration?) -> Void
-
-        @State private var unit: String = ""
-
-        private var effectiveUnit: String { unit.isEmpty ? defaultUnit : unit }
 
         var body: some View {
             HStack(spacing: 8) {
+                Toggle("", isOn: Binding(get: { isDilution }, set: setIsDilution))
+                    .toggleStyle(.checkbox)
+                    .labelsHidden()
                 if let colorHex {
                     RoundedRectangle(cornerRadius: 3)
                         .fill(Color(nsColor: NSColor(hex: colorHex) ?? .gray))
@@ -268,46 +238,15 @@ struct PrepView: View {
                 Text(name)
                     .frame(width: 130, alignment: .leading)
                     .lineLimit(1)
-                // An optional binding, so a compound with no stock shows an empty field
-                // rather than a zero — "not set" and "zero" are different things here,
-                // and the vehicle condition is legitimately the former.
-                TextField(
-                    "—",
-                    value: Binding<Double?>(
-                        get: { stock?.isUsable == true ? stock?.value : nil },
-                        set: { value in
-                            guard let value else { return set(nil) }
-                            set(StockConcentration(value: value, unit: effectiveUnit))
-                        }
-                    ),
-                    format: .number
-                )
-                .frame(width: 70)
-                CommitTextField(
-                    placeholder: defaultUnit.isEmpty ? "mM" : defaultUnit,
-                    text: unit, font: .body, allowsEmpty: true
-                ) { typed in
-                    unit = typed
-                    set(StockConcentration(value: stock?.value ?? 0, unit: typed))
-                }
-                .frame(width: 80)
+                    .foregroundStyle(isDilution ? .primary : .secondary)
+                // Disabled rather than hidden: this window has no scroll view, and a
+                // list that changed height as you ticked would make the table jump.
+                StockField(stock: stock, defaultUnit: defaultUnit, onCommit: set)
+                    .disabled(!isDilution)
                 Spacer(minLength: 0)
             }
             .font(.callout)
-            .onAppear { unit = stock?.unit ?? "" }
-            // The model still wins when it changes underneath — an undo, or a stock
-            // arriving with a pasted compound. A stock cleared to nil deliberately does
-            // *not* clear the unit: that is the whole point of keeping it here.
-            .onChange(of: stock?.unit) { _, new in
-                if let new, new != unit { unit = new }
-            }
         }
-    }
-
-    /// The dose factor's own unit is the likeliest answer, and it makes the common case
-    /// — a stock quoted in the same unit as the doses — a single number to type.
-    private var defaultStockUnit: String {
-        editor.layout.factor(id: setup.doseFactorID)?.unit ?? ""
     }
 
     // MARK: - Table
@@ -364,23 +303,6 @@ struct PrepView: View {
 
     /// Every field writes through `updatePrep`, so each change is one ordinary undo step
     /// and the setup is created in the document the first time something is actually set.
-    /// Choosing the factor that is currently the *compound* factor clears that in the
-    /// same edit. Without it `compoundFactorID` kept pointing at a factor the Compounds
-    /// picker filters out, so the control rendered blank and could not be cleared — and
-    /// the plan cross-tabbed the factor against itself, giving every condition its own
-    /// one-tube "compound".
-    private var doseFactorSelection: Binding<UUID?> {
-        Binding(
-            get: { editor.effectivePrepSetup.doseFactorID },
-            set: { value in
-                editor.updatePrep("Prep Dose Factor") {
-                    $0.doseFactorID = value
-                    if let value, $0.compoundFactorID == value { $0.compoundFactorID = nil }
-                }
-            }
-        )
-    }
-
     /// A scope pointing at a plate that has been deleted matches no tag, so the picker
     /// renders blank and cannot be changed. It reads as "All plates" — which is what the
     /// sheet is actually showing — while leaving the stored id alone, so undoing the

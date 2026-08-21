@@ -612,25 +612,20 @@ final class WorkbookTests: XCTestCase {
     /// A layout with a dose series and one compound, ready to prep.
     private func prepLayout() -> Layout {
         var layout = Layout(plates: [Plate(name: "Plate 1", format: .well96)])
-        var dose = Factor(name: "Dose", kind: .numeric, unit: "µM")
+        var drug = Factor(
+            name: "Cpd1", kind: .numeric, unit: "µM",
+            dilution: Dilution(stock: StockConcentration(value: 10, unit: "mM"))
+        )
         for (index, name) in ["10", "3.33", "1.11", "0"].enumerated() {
-            dose.levels.append(Level(name: name, colorHex: Palette.color(at: index)))
+            drug.levels.append(Level(name: name, colorHex: Palette.color(at: index)))
         }
-        var drug = Factor(name: "Drug")
-        drug.levels = [
-            Level(name: "Cpd1", colorHex: Palette.color(at: 5),
-                  stock: StockConcentration(value: 10, unit: "mM")),
-        ]
-        layout.factors = [drug, dose]
-        for (index, level) in dose.levels.enumerated() {
+        layout.factors = [drug]
+        for (index, level) in drug.levels.enumerated() {
             for well in (index * 12)..<(index * 12 + 12) {
-                layout.plates[0].setLevelID(level.id, factor: dose.id, well: well)
-                layout.plates[0].setLevelID(drug.levels[0].id, factor: drug.id, well: well)
+                layout.plates[0].setLevelID(level.id, factor: drug.id, well: well)
             }
         }
         var prep = PrepSetup()
-        prep.doseFactorID = dose.id
-        prep.compoundFactorID = drug.id
         prep.wellVolume = 100
         prep.addedVolume = 10
         layout.prep = prep
@@ -689,9 +684,9 @@ final class WorkbookTests: XCTestCase {
     /// nothing to warn about, and still adds no tab.
     func testAPrepSetupWithNothingToSayStillAddsNoTab() throws {
         var layout = prepLayout()
-        let dose = try XCTUnwrap(layout.factors.first { $0.name == "Dose" })
+        let drug = try XCTUnwrap(layout.factors.first { $0.dilution != nil })
         for well in 0..<layout.plates[0].format.wellCount {
-            layout.plates[0].setLevelID(nil, factor: dose.id, well: well)
+            layout.plates[0].setLevelID(nil, factor: drug.id, well: well)
         }
         let plan = try XCTUnwrap(DilutionPlan.make(from: layout))
         XCTAssertTrue(plan.isEmpty)
@@ -709,8 +704,8 @@ final class WorkbookTests: XCTestCase {
         var layout = prepLayout()
         let unset = StockConcentration(value: 0, unit: "mM")
         XCTAssertFalse(unset.isUsable)
-        let drug = try XCTUnwrap(layout.factors.firstIndex { $0.name == "Drug" })
-        layout.factors[drug].levels[0].stock = unset
+        let drug = try XCTUnwrap(layout.factors.firstIndex { $0.dilution != nil })
+        layout.factors[drug].dilution = Dilution(stock: unset)
 
         let xml = try prepSheetXML(of: Exporter.workbook(from: layout))
         XCTAssertFalse(xml.contains("stock \(unset.label)"), "0 mM is not a stock to take from")

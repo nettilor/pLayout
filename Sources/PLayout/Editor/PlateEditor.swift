@@ -1140,7 +1140,7 @@ final class PlateEditor: ObservableObject {
         // And deliberately *cheap*: building the plan walks every well of every plate,
         // and `canvasItems` is read on every board reload and every card edit. Asking it
         // whether a prep card exists made the whole board crawl.
-        let hasPrep = layout.prep.flatMap { layout.factor(id: $0.doseFactorID) } != nil
+        let hasPrep = layout.factors.contains { $0.dilution != nil }
         return CanvasArrangement.resolved(
             saved: layout.canvas, plates: layout.plates,
             orientation: layout.orientation, includesPrep: hasPrep
@@ -1297,26 +1297,13 @@ final class PlateEditor: ObservableObject {
     /// a sensible default before that. Opening the window is not an edit.
     var effectivePrepSetup: PrepSetup { layout.prep ?? defaultPrepSetup() }
 
-    /// Whether a condition row should carry its stock. Only on the factor the prep sheet
-    /// is actually using for compounds, and only when a stock is set — a placeholder on
-    /// every condition of every document, for a feature most never touch, is exactly the
-    /// clutter to avoid.
-    func showsStock(on level: Level) -> Bool {
-        guard level.stock?.isUsable == true, let compound = layout.prep?.compoundFactorID
-        else { return false }
-        return activeFactorID == compound
-    }
+    /// What the prep sheet starts from when a document has never had one. Nothing to
+    /// guess any more: which factors are drugs is said on the factors themselves, so this
+    /// is only the bench numbers, and every one of them has a sensible default.
+    func defaultPrepSetup() -> PrepSetup { PrepSetup() }
 
-    /// What the prep sheet starts from when a document has never had one: the first
-    /// numeric factor, which after a Series Fill is the dose. The compound factor is
-    /// left unset — guessing which factor is the drug would be wrong as often as right,
-    /// and the picker is the first thing in the window.
-    func defaultPrepSetup() -> PrepSetup {
-        var setup = PrepSetup()
-        setup.doseFactorID = layout.factors.first { $0.kind == .numeric }?.id
-            ?? layout.factors.first?.id
-        return setup
-    }
+    /// The factors this document makes up by dilution, in sidebar order.
+    var dilutionFactors: [Factor] { layout.factors.filter { $0.dilution != nil } }
 
     /// Opens the prep window, or brings it to the front if it is already up. No Overview
     /// guard, unlike every other sheet opener in this file: reading a prep plan with
@@ -1353,14 +1340,28 @@ final class PlateEditor: ObservableObject {
         }
     }
 
-    /// The stock lives on the compound's condition, so this is a level edit like any
-    /// other. A nil or unusable value clears it rather than storing a zero.
-    func setStock(_ stock: StockConcentration?, for levelID: UUID, in factorID: UUID) {
+    /// Marks a factor as one you make by dilution, or stops it being one. Turning it off
+    /// takes the stock with it — the two are one fact about the factor, and a stock left
+    /// behind on something that is not a dilution is a value nothing will ever read.
+    func setFactorIsDilution(_ factorID: UUID, _ isDilution: Bool) {
+        edit(isDilution ? "Made by Dilution" : "Not a Dilution") { layout in
+            guard let i = layout.factorIndex(id: factorID) else { return }
+            guard isDilution else { return layout.factors[i].dilution = nil }
+            if layout.factors[i].dilution == nil { layout.factors[i].dilution = Dilution() }
+        }
+    }
+
+    /// The stock this factor's levels are diluted from. Setting one marks the factor as a
+    /// dilution if it was not already: typing a stock says what you mean.
+    ///
+    /// An unusable value stores nil rather than a zero — a unit typed before a number is
+    /// not a stock, and `0 mM` printed on a sheet reads as a measurement.
+    func setFactorStock(_ factorID: UUID, stock: StockConcentration?) {
         edit("Stock Concentration") { layout in
-            guard let fi = layout.factorIndex(id: factorID),
-                  let li = layout.factors[fi].levels.firstIndex(where: { $0.id == levelID })
-            else { return }
-            layout.factors[fi].levels[li].stock = (stock?.isUsable == true) ? stock : nil
+            guard let i = layout.factorIndex(id: factorID) else { return }
+            var dilution = layout.factors[i].dilution ?? Dilution()
+            dilution.stock = (stock?.isUsable == true) ? stock : nil
+            layout.factors[i].dilution = dilution
         }
     }
 

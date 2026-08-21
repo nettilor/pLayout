@@ -157,14 +157,19 @@ struct DilutionPlan: Equatable {
         var label: String { isVehicle ? "Vehicle" : doseName }
     }
 
+    /// One drug's series — one factor's worth.
     struct Compound: Equatable {
-        /// The condition name, or "" when no compound factor was chosen.
+        /// The factor's name, which is the drug's name.
         var name: String
-        var levelID: UUID?
+        /// The colour of its most concentrated level. A numeric factor's levels are a
+        /// single-hue ramp, so the top of that ramp stands for the drug.
         var colorHex: String?
         var stock: StockConcentration?
-        /// The stock in the dose factor's own unit, once converted.
+        /// The stock in this drug's own unit, once converted.
         var stockInDoseUnits: Double?
+        /// This drug's unit, carried per drug rather than per plan — one sheet can hold a
+        /// series in µM beside one in ng/mL.
+        var unit: String
         var method: Method
         /// Most concentrated first; the vehicle, if any, last.
         var steps: [Step]
@@ -176,8 +181,6 @@ struct DilutionPlan: Equatable {
 
     var compounds: [Compound]
     var setup: PrepSetup
-    var doseFactorName: String
-    var doseUnit: String
     /// "Plate 1" or "all 3 plates" — printed in the header so a scoped plan cannot be
     /// misread inside a workbook that covers something else.
     var scopeText: String
@@ -211,17 +214,19 @@ extension DilutionPlan {
     /// is what lets the prep window show a table the moment it opens, without an undo
     /// step for having opened a window.
     static func make(from layout: Layout, setup: PrepSetup) -> DilutionPlan? {
-        guard let doseFactor = layout.factor(id: setup.doseFactorID) else { return nil }
+        // One series per factor that says it is made by dilution, in sidebar order so the
+        // sheet reads like the plate. Nothing to choose and nothing to cross-tab: a
+        // factor *is* a drug, and its levels are the concentrations it is used at.
+        let drugs = layout.factors.filter { $0.dilution != nil }
+        guard !drugs.isEmpty else { return nil }
 
         let scoped = setup.plateID.flatMap { id in
             layout.plates.first { $0.id == id }.map { [$0] }
         }
         let plates = scoped ?? layout.plates
-        let compoundFactor = layout.factor(id: setup.compoundFactorID)
 
         var plan = DilutionPlan(
-            compounds: [], setup: setup, doseFactorName: doseFactor.name,
-            doseUnit: doseFactor.unit, scopeText: scopeText(layout: layout, setup: setup)
+            compounds: [], setup: setup, scopeText: scopeText(layout: layout, setup: setup)
         )
 
         // Deleting the plate a sheet was scoped to silently widened it to every plate,
@@ -243,53 +248,24 @@ extension DilutionPlan {
             return plan
         }
 
-        for level in doseFactor.levels where Double(level.name) == nil {
-            plan.warnings.append(.nonNumericDose(name: level.name))
-        }
-
-        let counts = wellCounts(
-            plates: plates, doseFactor: doseFactor, compoundFactor: compoundFactor
-        )
-
-        // One bucket per compound condition, in sidebar order so the sheet reads like the
-        // plate; then a trailing bucket for wells that carry a dose but no compound.
-        var buckets: [(level: Level?, counts: [UUID: Int])] = []
-        if let compoundFactor {
-            for level in compoundFactor.levels {
-                buckets.append((level, counts[level.id] ?? [:]))
-            }
-            if let orphans = counts[nil as UUID?] ?? nil, !orphans.isEmpty {
-                buckets.append((nil, orphans))
-            }
-        } else {
-            buckets.append((nil, counts.values.reduce(into: [:]) { merged, column in
-                for (key, value) in column { merged[key, default: 0] += value }
-            }))
-        }
-
-        for bucket in buckets {
-            guard !bucket.counts.isEmpty else { continue }
+        for drug in drugs {
             plan.compounds.append(
                 compound(
-                    level: bucket.level, hasCompoundFactor: compoundFactor != nil,
-                    counts: bucket.counts, doseFactor: doseFactor, setup: setup
+                    drug: drug, counts: wellCounts(plates: plates, factor: drug), setup: setup
                 )
             )
         }
         return plan
     }
 
-    /// Wells per (compound condition, dose condition). A cross-tab, walked once —
-    /// `assignedWellCount` only ever counts one factor at a time.
-    private static func wellCounts(
-        plates: [Plate], doseFactor: Factor, compoundFactor: Factor?
-    ) -> [UUID?: [UUID: Int]] {
-        var counts: [UUID?: [UUID: Int]] = [:]
+    /// Wells per level of one factor, walked once. `Plate.assignedWellCount` answers this
+    /// for a single level; a factor with eight of them would walk the plate eight times.
+    private static func wellCounts(plates: [Plate], factor: Factor) -> [UUID: Int] {
+        var counts: [UUID: Int] = [:]
         for plate in plates {
             for well in 0..<plate.format.wellCount {
-                guard let dose = plate.levelID(factor: doseFactor.id, well: well) else { continue }
-                let compound = compoundFactor.flatMap { plate.levelID(factor: $0.id, well: well) }
-                counts[compound, default: [:]][dose, default: 0] += 1
+                guard let level = plate.levelID(factor: factor.id, well: well) else { continue }
+                counts[level, default: 0] += 1
             }
         }
         return counts
@@ -309,34 +285,39 @@ extension DilutionPlan {
 extension DilutionPlan {
 
     private static func compound(
-        level: Level?, hasCompoundFactor: Bool, counts: [UUID: Int],
-        doseFactor: Factor, setup: PrepSetup
+        drug: Factor, counts: [UUID: Int], setup: PrepSetup
     ) -> Compound {
-        let name = level?.name ?? (hasCompoundFactor ? "(no compound)" : "")
+        let name = drug.name
         var warnings: [PrepWarning] = []
-        // Without a compound factor there is no condition to hang a stock on, so the
-        // setup carries the one stock itself.
-        let ownStock = hasCompoundFactor ? level?.stock : setup.stock
+        let ownStock = drug.dilution?.stock
 
-        // The stock, in the dose factor's own unit.
+        // A level whose name is not a number cannot be a concentration. The toggle can be
+        // put on any factor, so say which ones could not be read rather than leaving an
+        // empty series to explain itself.
+        for level in drug.levels where Double(level.name) == nil {
+            warnings.append(.nonNumericDose(name: level.name))
+        }
+
+        // The stock, in this drug's own unit — each drug converts against its own, which
+        // is what lets one be in µM while another is in ng/mL.
         var stockInDoseUnits: Double?
         if let stock = ownStock, stock.isUsable {
-            let doseUnit = ConcentrationUnit.parse(doseFactor.unit)
+            let doseUnit = ConcentrationUnit.parse(drug.unit)
             switch ConcentrationUnit.parse(stock.unit).conversion(to: doseUnit) {
             case .exact(let factor):
                 stockInDoseUnits = stock.value * factor
             case .assumed(let factor):
                 stockInDoseUnits = stock.value * factor
-                warnings.append(.unitAssumed(dose: doseFactor.unit, stock: stock.unit))
+                warnings.append(.unitAssumed(dose: drug.unit, stock: stock.unit))
             case .incompatible:
-                warnings.append(.unitsNotComparable(dose: doseFactor.unit, stock: stock.unit))
+                warnings.append(.unitsNotComparable(dose: drug.unit, stock: stock.unit))
             }
         }
 
-        // Doses actually painted with this compound, highest first; the vehicle apart.
+        // Concentrations actually painted, highest first; the vehicle apart.
         var actives: [(level: Level, dose: Double, wells: Int)] = []
         var vehicleWells = 0
-        for level in doseFactor.levels {
+        for level in drug.levels {
             guard let wells = counts[level.id], wells > 0, let dose = Double(level.name) else { continue }
             if dose == 0 {
                 vehicleWells += wells
@@ -349,7 +330,7 @@ extension DilutionPlan {
         let method = self.method(for: actives.map(\.dose), warnings: &warnings)
         var steps = tubes(
             actives: actives, method: method, setup: setup,
-            stockInDoseUnits: stockInDoseUnits, compound: name.isEmpty ? "this series" : name,
+            stockInDoseUnits: stockInDoseUnits, compound: name,
             warnings: &warnings
         )
 
@@ -384,8 +365,9 @@ extension DilutionPlan {
         }
 
         return Compound(
-            name: name, levelID: level?.id, colorHex: level?.colorHex, stock: ownStock,
-            stockInDoseUnits: stockInDoseUnits, method: method, steps: steps, warnings: warnings
+            name: name, colorHex: drug.levels.first?.colorHex, stock: ownStock,
+            stockInDoseUnits: stockInDoseUnits, unit: drug.unit, method: method,
+            steps: steps, warnings: warnings
         )
     }
 

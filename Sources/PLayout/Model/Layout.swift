@@ -36,21 +36,11 @@ struct Level: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
     var name: String
     var colorHex: String
-    /// Only meaningful on a level of the compound factor — the stock that condition is
-    /// diluted from. nil everywhere else, which is also what every document written
-    /// before the prep sheet decodes to.
-    ///
-    /// It lives here rather than in a table on `Layout` because of lifetime: a side
-    /// table would need a matching prune in `removeLevel`, `removeFactor` and
-    /// `pruneUnusedLevels`, and a missed one leaves a stock pointing at a condition that
-    /// no longer exists. Here, deleting the condition takes its stock with it.
-    var stock: StockConcentration?
 
-    init(id: UUID = UUID(), name: String, colorHex: String, stock: StockConcentration? = nil) {
+    init(id: UUID = UUID(), name: String, colorHex: String) {
         self.id = id
         self.name = name
         self.colorHex = colorHex
-        self.stock = stock
     }
 
     /// Hand-written like the rest of this file. `id`, `name` and `colorHex` are decoded
@@ -61,7 +51,6 @@ struct Level: Identifiable, Codable, Hashable {
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
         colorHex = try container.decode(String.self, forKey: .colorHex)
-        stock = try container.decodeIfPresent(StockConcentration.self, forKey: .stock)
     }
 }
 
@@ -74,19 +63,66 @@ enum FactorKind: String, Codable, Hashable {
 
 /// An independent variable painted onto the plate. A document may hold several,
 /// so a single well can carry a cell line *and* a drug *and* a dose.
+/// How a factor's levels are made up at the bench.
+///
+/// Present means "this factor is a dilution series" — that a factor *is* a drug, its
+/// levels are the concentrations it is used at, and `Factor.unit` is what they are in.
+/// That presence is the whole marker: it is what puts the factor on the prep sheet.
+///
+/// The stock inside is separately optional, so you can ask for the volumes to make before
+/// you know what you are diluting from. A stock is stored only when it is usable — a unit
+/// typed before a number is not a stock.
+struct Dilution: Codable, Hashable {
+    var stock: StockConcentration?
+
+    init(stock: StockConcentration? = nil) {
+        self.stock = stock
+    }
+
+    /// Hand-written for the reason every type in this file is: a synthesized decoder
+    /// ignores stored-property defaults, so a field added later would break saved files.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        stock = try container.decodeIfPresent(StockConcentration.self, forKey: .stock)
+    }
+}
+
 struct Factor: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
     var name: String
     var kind: FactorKind = .categorical
     var unit: String = ""
     var levels: [Level] = []
+    /// Set when this factor is a drug you dilute — see `Dilution`. nil for a cell line, a
+    /// timepoint, and every factor in every document written before the prep sheet.
+    var dilution: Dilution?
 
-    init(id: UUID = UUID(), name: String, kind: FactorKind = .categorical, unit: String = "", levels: [Level] = []) {
+    init(
+        id: UUID = UUID(), name: String, kind: FactorKind = .categorical, unit: String = "",
+        levels: [Level] = [], dilution: Dilution? = nil
+    ) {
         self.id = id
         self.name = name
         self.kind = kind
         self.unit = unit
         self.levels = levels
+        self.dilution = dilution
+    }
+
+    /// Hand-written now that `Factor` has gained a field — it was the last type in this
+    /// file still riding the synthesized decoder, and only because it had never changed
+    /// since the format's first byte. `id` and `name` decode strictly, as a factor
+    /// without them is corrupt; everything else takes a default, and `kind` is read
+    /// leniently so a value written by a newer build falls back rather than refusing to
+    /// open the file.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        kind = (try? container.decodeIfPresent(FactorKind.self, forKey: .kind)).flatMap { $0 } ?? .categorical
+        unit = try container.decodeIfPresent(String.self, forKey: .unit) ?? ""
+        levels = try container.decodeIfPresent([Level].self, forKey: .levels) ?? []
+        dilution = try container.decodeIfPresent(Dilution.self, forKey: .dilution)
     }
 
     var displayName: String { unit.isEmpty ? name : "\(name) (\(unit))" }
@@ -473,10 +509,10 @@ struct Overage: Codable, Hashable {
 /// the well volume of a 384 is not a matter of taste — and because `Exporter.workbook`
 /// only ever sees a `Layout`, which is what lets the prep tab exist without threading a
 /// new argument through every export path.
+///
+/// It says nothing about *what* is being made: that is `Factor.dilution`, on each drug.
+/// These are only the numbers that apply to every tube on the bench at once.
 struct PrepSetup: Codable, Hashable {
-    var doseFactorID: UUID?
-    /// nil means one series for the whole plate rather than one per compound.
-    var compoundFactorID: UUID?
     /// nil means every plate in the document.
     var plateID: UUID?
     /// µL in the well *after* the addition.
@@ -486,10 +522,6 @@ struct PrepSetup: Codable, Hashable {
     /// 100 µL of 1×" — a single well volume silently assumes the latter.
     var addedVolume: Double = 100
     var overage: Overage = Overage()
-    /// The stock, when no compound factor is chosen and there is therefore no condition
-    /// to hang one on. Ignored once a compound factor is picked — each compound's own
-    /// stock lives on its condition, where deleting the condition takes it with it.
-    var stock: StockConcentration?
     /// µL. Warnings only: nothing is refused for being small, it is flagged.
     var minimumPipetteVolume: Double = 2
     /// What the tubes are made up in, for the printout to name.
@@ -500,13 +532,10 @@ struct PrepSetup: Codable, Hashable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        doseFactorID = try container.decodeIfPresent(UUID.self, forKey: .doseFactorID)
-        compoundFactorID = try container.decodeIfPresent(UUID.self, forKey: .compoundFactorID)
         plateID = try container.decodeIfPresent(UUID.self, forKey: .plateID)
         wellVolume = try container.decodeIfPresent(Double.self, forKey: .wellVolume) ?? 100
         addedVolume = try container.decodeIfPresent(Double.self, forKey: .addedVolume) ?? 100
         overage = try container.decodeIfPresent(Overage.self, forKey: .overage) ?? Overage()
-        stock = try container.decodeIfPresent(StockConcentration.self, forKey: .stock)
         minimumPipetteVolume = try container.decodeIfPresent(Double.self, forKey: .minimumPipetteVolume) ?? 2
         diluent = try container.decodeIfPresent(String.self, forKey: .diluent) ?? "medium"
         includeInWorkbook = try container.decodeIfPresent(Bool.self, forKey: .includeInWorkbook) ?? true

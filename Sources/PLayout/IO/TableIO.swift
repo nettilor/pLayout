@@ -251,7 +251,9 @@ enum Exporter {
         // the sheet from precisely the export whose message the bench most needs, while
         // the window and the printout (which test `!isEmpty || !allWarnings.isEmpty`)
         // showed it. A plan with neither still adds no tab, so no empty sheet is emitted.
-        if layout.prep?.includeInWorkbook == true,
+        // `!= false`, not `== true`: marking a factor is the opt-in now, so a document
+        // that marks a drug and never opens the prep window still earns its tab.
+        if layout.prep?.includeInWorkbook != false,
            let plan = DilutionPlan.make(from: layout),
            !plan.isEmpty || !plan.allWarnings.isEmpty {
             sheets.append(prepSheet(plan: plan))
@@ -411,7 +413,7 @@ enum Exporter {
             return XLSX.Cell(value: .number(value))
         }
 
-        rows.append([XLSX.Cell(value: .text("Pipetting prep — \(plan.doseFactorName)"), bold: true)])
+        rows.append([XLSX.Cell(value: .text("Pipetting prep"), bold: true)])
         line("Covers", plan.scopeText)
         line(
             "In each well",
@@ -420,7 +422,6 @@ enum Exporter {
         )
         line("Make extra", setup.overage.label)
         line("Diluent", setup.diluent)
-        if !plan.doseUnit.isEmpty { line("Doses in", plan.doseUnit) }
 
         for compound in plan.compounds where !compound.steps.isEmpty {
             rows.append([])
@@ -434,6 +435,9 @@ enum Exporter {
             // from, which is why the plan refuses to use it and warns. Printing
             // "stock 0 mM" reads as a measured concentration and contradicts both the
             // window and the printout, which call that "no stock set".
+            // Each drug says its own unit here rather than the sheet naming one for all
+            // of them — a plan can hold a series in µM beside one in ng/mL.
+            if !compound.unit.isEmpty { heading.append(.text("in \(compound.unit)")) }
             let stock = compound.stock.flatMap { $0.isUsable ? "stock \($0.label)" : nil }
             heading.append(.text(stock ?? "no stock set"))
             heading.append(.text(compound.method.label))

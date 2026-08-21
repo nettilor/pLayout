@@ -112,7 +112,7 @@ final class PrepTableView: NSView {
             y += height
         }
 
-        add(.title("Pipetting prep — \(plan.doseFactorName)"), 24)
+        add(.title("Pipetting prep"), 24)
         add(.setupLine(setupLine(plan)), 16)
         add(.setupLine(volumeLine(plan)), 16)
         add(.spacer, 8)
@@ -162,8 +162,9 @@ final class PrepTableView: NSView {
     // MARK: - Lines of prose
 
     private func setupLine(_ plan: DilutionPlan) -> String {
-        var parts = [plan.scopeText, "made up in \(plan.setup.diluent)", plan.setup.overage.label]
-        if !plan.doseUnit.isEmpty { parts.insert("doses in \(plan.doseUnit)", at: 1) }
+        // The unit is no longer one per sheet — each drug carries its own, and says it on
+        // its own heading — so it is not named up here any more.
+        let parts = [plan.scopeText, "made up in \(plan.setup.diluent)", plan.setup.overage.label]
         return parts.joined(separator: "  ·  ")
     }
 
@@ -177,6 +178,7 @@ final class PrepTableView: NSView {
 
     private func compoundDetail(_ compound: DilutionPlan.Compound, plan: DilutionPlan) -> String {
         var parts: [String] = []
+        if !compound.unit.isEmpty { parts.append("in \(compound.unit)") }
         if let stock = compound.stock, stock.isUsable {
             parts.append("stock \(stock.label)")
         } else {

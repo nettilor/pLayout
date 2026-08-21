@@ -252,14 +252,16 @@ final class CanvasModelTests: XCTestCase {
 
     func testClosingThePrepCardHidesOnlyThePrepCard() {
         let (document, editor) = multiPlate()
-        document.layout.factors[0].kind = .numeric
-        editor.updatePrep { $0.doseFactorID = document.layout.factors[0].id }
+        editor.setFactorIsDilution(document.layout.factors[0].id, true)
         let prep = try? XCTUnwrap(editor.canvasItems.first { $0.kind == .prep })
 
         editor.closeCanvasItem(prep!.id)
         XCTAssertFalse(editor.canvasItems.contains { $0.kind == .prep })
         XCTAssertEqual(editor.canvasItems.filter { $0.kind == .plate }.count, 3)
-        XCTAssertNotNil(document.layout.prep, "the prep setup itself survives")
+        XCTAssertNotNil(
+            document.layout.factors[0].dilution,
+            "the factor is still one you make by dilution — only its card went"
+        )
     }
 
     /// A closed card has to stay closed through whatever you do to the board next.
@@ -366,8 +368,7 @@ final class CanvasModelTests: XCTestCase {
     /// And the same for the prep card, which is remembered by a different field.
     func testAClosedPrepCardStaysClosedThroughTheNextBoardEdit() {
         let (document, editor) = multiPlate()
-        document.layout.factors[0].kind = .numeric
-        editor.updatePrep { $0.doseFactorID = document.layout.factors[0].id }
+        editor.setFactorIsDilution(document.layout.factors[0].id, true)
         let prep = editor.canvasItems.first { $0.kind == .prep }!
         editor.closeCanvasItem(prep.id)
 

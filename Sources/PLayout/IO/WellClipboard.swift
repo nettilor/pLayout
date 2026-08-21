@@ -24,21 +24,22 @@ struct WellClipboard: Codable, Equatable {
         /// Condition name → colour, so a value this document has never seen arrives
         /// looking the way it did in the one it came from.
         var colors: [String: String]
-        /// Condition name → stock concentration, for the same reason: a compound copied
-        /// into another document should arrive knowing what it is diluted from.
-        var stocks: [String: StockConcentration]
+        /// Set when this factor is a drug, so one copied into another document arrives
+        /// still knowing it is made by dilution and what from. It rides beside `unit`
+        /// because it is the same kind of thing — a property of the factor, not of any
+        /// one of its conditions.
+        var dilution: Dilution?
 
         init(
             name: String, unit: String = "", kind: FactorKind = .categorical,
-            values: [String?], colors: [String: String] = [:],
-            stocks: [String: StockConcentration] = [:]
+            values: [String?], colors: [String: String] = [:], dilution: Dilution? = nil
         ) {
             self.name = name
             self.unit = unit
             self.kind = kind
             self.values = values
             self.colors = colors
-            self.stocks = stocks
+            self.dilution = dilution
         }
 
         init(from decoder: Decoder) throws {
@@ -48,7 +49,7 @@ struct WellClipboard: Codable, Equatable {
             kind = try c.decodeIfPresent(FactorKind.self, forKey: .kind) ?? .categorical
             values = try c.decodeIfPresent([String?].self, forKey: .values) ?? []
             colors = try c.decodeIfPresent([String: String].self, forKey: .colors) ?? [:]
-            stocks = try c.decodeIfPresent([String: StockConcentration].self, forKey: .stocks) ?? [:]
+            dilution = try c.decodeIfPresent(Dilution.self, forKey: .dilution)
         }
     }
 
@@ -89,7 +90,6 @@ struct WellClipboard: Codable, Equatable {
         let columns = factors.map { factor -> Column in
             var values: [String?] = []
             var colors: [String: String] = [:]
-            var stocks: [String: StockConcentration] = [:]
             values.reserveCapacity(range.wellCount)
             for row in range.minRow...range.maxRow {
                 for col in range.minCol...range.maxCol {
@@ -102,12 +102,11 @@ struct WellClipboard: Codable, Equatable {
                     }
                     values.append(level.name)
                     colors[level.name] = level.colorHex
-                    if let stock = level.stock { stocks[level.name] = stock }
                 }
             }
             return Column(
                 name: factor.name, unit: factor.unit, kind: factor.kind,
-                values: values, colors: colors, stocks: stocks
+                values: values, colors: colors, dilution: factor.dilution
             )
         }
         return WellClipboard(rows: range.rowCount, cols: range.colCount, factors: columns)
@@ -187,7 +186,17 @@ struct WellClipboard: Codable, Equatable {
                 $0.name.trimmingCharacters(in: .whitespaces).lowercased() == name.lowercased()
             }
             if factorIndex == nil {
-                layout.factors.append(Factor(name: name, kind: column.kind, unit: column.unit))
+                // The dilution travels only with a factor being *created* here. The rule
+                // is the one the per-condition stock followed before it moved: a stock
+                // already set in this document is bench reality, and a paste does not
+                // overrule it — only now it is one fact per factor rather than one per
+                // condition.
+                layout.factors.append(
+                    Factor(
+                        name: name, kind: column.kind, unit: column.unit,
+                        dilution: column.dilution
+                    )
+                )
                 factorIndex = layout.factors.count - 1
                 report.createdFactors += 1
             }
@@ -216,12 +225,6 @@ struct WellClipboard: Codable, Equatable {
                             ? colorForNewLevel(named: value, in: layout, factor: fi, column: column)
                             : nil
                     )
-                    // Only for a condition being created here: a stock already set in
-                    // this document is bench reality and a paste does not overrule it.
-                    if existing == nil, let stock = column.stocks[value],
-                       let li = layout.factors[fi].levels.firstIndex(where: { $0.id == levelID }) {
-                        layout.factors[fi].levels[li].stock = stock
-                    }
                     layout.plates[plateIndex].setLevelID(levelID, factor: factorID, well: well)
                 }
             }

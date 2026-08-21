@@ -156,6 +156,37 @@ struct Sidebar: View {
                     }
                 }
 
+                // Directly under the unit because it is the same kind of fact about the
+                // factor: what its levels are in, and what they are diluted from. Ticking
+                // it is what puts this factor on the prep sheet (⌥⌘P).
+                Toggle(
+                    "Made by dilution",
+                    isOn: Binding(
+                        get: { factor.dilution != nil },
+                        set: { editor.setFactorIsDilution(factor.id, $0) }
+                    )
+                )
+                .toggleStyle(.checkbox)
+                .font(.caption)
+
+                if factor.dilution != nil {
+                    // Both fields have a stated width and the row ends in a spacer: a
+                    // low layout priority beside a flexible field is starved to zero
+                    // width, which is how the old stock chip managed never to appear.
+                    HStack(spacing: 6) {
+                        Text("Stock")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        StockField(
+                            stock: factor.dilution?.stock, defaultUnit: factor.unit,
+                            font: .caption, valueWidth: 56, unitWidth: 60
+                        ) {
+                            editor.setFactorStock(factor.id, stock: $0)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+
                 ForEach(Array(factor.levels.enumerated()), id: \.element.id) { index, level in
                     levelRow(index: index, level: level)
                         .opacity(draggedLevelID == level.id ? 0.4 : 1)
@@ -236,18 +267,6 @@ struct Sidebar: View {
                 ),
                 onCommit: { editor.renameLevel(level.id, to: $0) }
             )
-            if editor.showsStock(on: level), let stock = level.stock {
-                Text(stock.label)
-                    .font(.caption2)
-                    .monospacedDigit()
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    // `fixedSize`, not a low layout priority: the name beside it is a
-                    // `maxWidth: .infinity` field, which starves anything of lower
-                    // priority to zero width — the chip simply never appeared. The name
-                    // already truncates, so it is the one that gives way.
-                    .fixedSize()
-            }
             Text(count == 0 ? "—" : "\(count)")
                 .font(.caption)
                 .monospacedDigit()
@@ -295,10 +314,6 @@ struct Sidebar: View {
                     editor.armLevel(level.id)
                     editor.paintSelection()
                 }
-                // A menu item rather than a click on the chip: a second gesture on a
-                // sidebar row stalls every click for the double-click interval and
-                // breaks drag-to-reorder (see RowReorder).
-                Button("Stock Concentration…") { editor.openPrepWindow() }
                 Divider()
                 Button("Delete Condition", role: .destructive) { editor.deleteLevel(level.id) }
             }

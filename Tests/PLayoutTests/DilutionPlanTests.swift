@@ -8,8 +8,13 @@ final class DilutionPlanTests: XCTestCase {
 
     // MARK: - Fixture
 
-    /// A 384-well plate with one compound and a 3-fold dose series, `wells` wells at each
-    /// dose plus `vehicleWells` at zero. Doses are the rounded names Series Fill writes.
+    /// A 384-well plate carrying `compounds` drugs, each a factor of its own with a
+    /// 3-fold series as its levels, `wells` wells at each concentration plus
+    /// `vehicleWells` at zero. Doses are the rounded names Series Fill writes.
+    ///
+    /// One factor per drug is the whole model: a factor *is* the drug, its levels are the
+    /// concentrations, `Factor.unit` is what they are in, and the stock hangs off the
+    /// factor. Nothing pairs two factors any more.
     private func layout(
         doses: [String] = ["10", "3.33", "1.11", "0.37"],
         wells: Int = 24,
@@ -21,34 +26,28 @@ final class DilutionPlanTests: XCTestCase {
     ) -> Layout {
         var layout = Layout(plates: [Plate(name: "Plate 1", format: .well384)])
 
-        var dose = Factor(name: "Dose", kind: .numeric, unit: doseUnit)
-        for (index, name) in (doses + (vehicleWells > 0 ? ["0"] : [])).enumerated() {
-            dose.levels.append(Level(name: name, colorHex: Palette.color(at: index)))
-        }
-        var drug = Factor(name: "Drug")
-        for (index, name) in compounds.enumerated() {
-            drug.levels.append(
-                Level(name: name, colorHex: Palette.color(at: index + 6), stock: stock)
-            )
-        }
-        layout.factors = [drug, dose]
-
-        // Painted in a straight run across the plate; only the counts matter here.
         var well = 0
-        for compound in drug.levels {
-            for level in dose.levels {
+        for (drugIndex, drugName) in compounds.enumerated() {
+            var drug = Factor(
+                name: drugName, kind: .numeric, unit: doseUnit, dilution: Dilution(stock: stock)
+            )
+            for (index, name) in (doses + (vehicleWells > 0 ? ["0"] : [])).enumerated() {
+                drug.levels.append(Level(name: name, colorHex: Palette.color(at: index)))
+            }
+            layout.factors.append(drug)
+
+            // Painted in a straight run across the plate; only the counts matter here.
+            for level in drug.levels {
                 let count = Double(level.name) == 0 ? vehicleWells : wells
                 for _ in 0..<count {
-                    layout.plates[0].setLevelID(level.id, factor: dose.id, well: well)
-                    layout.plates[0].setLevelID(compound.id, factor: drug.id, well: well)
+                    layout.plates[0].setLevelID(level.id, factor: drug.id, well: well)
                     well += 1
                 }
             }
+            _ = drugIndex
         }
 
         var prep = PrepSetup()
-        prep.doseFactorID = dose.id
-        prep.compoundFactorID = drug.id
         prep.wellVolume = 100
         prep.addedVolume = 10
         prep.overage = Overage(mode: .percent, percent: 20)
@@ -128,11 +127,11 @@ final class DilutionPlanTests: XCTestCase {
 
         // Only the bottom tube's well count changes.
         var bigger = layout()
-        let dose = try XCTUnwrap(bigger.factors[1].levels.first { $0.name == "0.37" })
+        let drug = bigger.factors[0]
+        let dose = try XCTUnwrap(drug.levels.first { $0.name == "0.37" })
         let format = bigger.plates[0].format
         for well in 300..<372 {
-            bigger.plates[0].setLevelID(dose.id, factor: bigger.factors[1].id, well: well)
-            bigger.plates[0].setLevelID(bigger.factors[0].levels[0].id, factor: bigger.factors[0].id, well: well)
+            bigger.plates[0].setLevelID(dose.id, factor: drug.id, well: well)
         }
         XCTAssertLessThan(372, format.wellCount)
         let grown = try plan(bigger)
@@ -262,37 +261,62 @@ final class DilutionPlanTests: XCTestCase {
         assertSerial(compound.method, fold: 2)
     }
 
-    // MARK: - Compound × dose
+    // MARK: - One factor per drug
 
-    func testEachCompoundGetsItsOwnSeries() throws {
+    func testEachDilutionFactorGetsItsOwnSeries() throws {
         let plan = try XCTUnwrap(DilutionPlan.make(from: layout(compounds: ["Cpd1", "Cpd2"])))
         XCTAssertEqual(plan.compounds.map(\.name), ["Cpd1", "Cpd2"])
         for compound in plan.compounds {
             XCTAssertEqual(compound.steps.count, 5)
-            XCTAssertEqual(compound.steps[0].wells, 24, "wells are counted per compound")
+            XCTAssertEqual(compound.steps[0].wells, 24, "wells are counted per drug")
         }
     }
 
-    func testWellsAreCountedForTheCompoundAndDoseTogether() throws {
+    /// Two drugs in one well is what the old two-factor shape could not say at all: a
+    /// well had one compound and one dose. Each factor now counts its own wells, so a
+    /// combination well belongs to both series.
+    func testAWellPaintedWithTwoDrugsIsCountedForEach() throws {
         var layout = self.layout(compounds: ["Cpd1", "Cpd2"])
-        // Move one of Cpd2's top-dose wells to Cpd1 and the counts must follow.
-        let drug = layout.factors[0]
-        let well = 120   // the first well of Cpd2's block
-        layout.plates[0].setLevelID(drug.levels[0].id, factor: drug.id, well: well)
+        let first = layout.factors[0]
+        let second = layout.factors[1]
+        // Well 0 already carries Cpd1's top dose; give it Cpd2's top dose as well.
+        layout.plates[0].setLevelID(second.levels[0].id, factor: second.id, well: 0)
 
         let plan = try XCTUnwrap(DilutionPlan.make(from: layout))
-        XCTAssertEqual(plan.compounds[0].steps[0].wells, 25)
-        XCTAssertEqual(plan.compounds[1].steps[0].wells, 23)
+        XCTAssertEqual(plan.compounds[0].steps[0].wells, 24, "unchanged for the first drug")
+        XCTAssertEqual(plan.compounds[1].steps[0].wells, 25, "and counted again for the second")
+        XCTAssertEqual(
+            layout.plates[0].levelID(factor: first.id, well: 0), first.levels[0].id,
+            "the well genuinely holds both"
+        )
     }
 
-    func testWithNoCompoundFactorTheWholePlateIsOneSeries() throws {
+    /// A factor is only on the sheet because it says it is made by dilution. Untick it
+    /// and it is an ordinary factor again — its levels are just labels.
+    func testAFactorThatIsNotMarkedIsNotInThePlan() throws {
         var layout = self.layout(compounds: ["Cpd1", "Cpd2"])
-        layout.prep?.compoundFactorID = nil
-        // The stock lives on the compound condition, so without one there is none.
+        layout.factors[1].dilution = nil
+
         let plan = try XCTUnwrap(DilutionPlan.make(from: layout))
-        XCTAssertEqual(plan.compounds.count, 1)
-        XCTAssertEqual(plan.compounds[0].name, "")
-        XCTAssertEqual(plan.compounds[0].steps[0].wells, 48, "both compounds' wells together")
+        XCTAssertEqual(plan.compounds.map(\.name), ["Cpd1"])
+    }
+
+    /// The unit is per factor, so one drug can be quoted in µM beside another in ng/mL —
+    /// which one shared dose factor could never do.
+    func testTwoDrugsCanBeInDifferentUnits() throws {
+        var layout = self.layout(compounds: ["Cpd1", "Cpd2"])
+        layout.factors[1].unit = "ng/mL"
+        layout.factors[1].dilution = Dilution(stock: StockConcentration(value: 5, unit: "mg/mL"))
+
+        let plan = try XCTUnwrap(DilutionPlan.make(from: layout))
+        XCTAssertEqual(plan.compounds[0].unit, "µM")
+        XCTAssertEqual(plan.compounds[1].unit, "ng/mL")
+        // 5 mg/mL is 5,000,000 ng/mL, and each converts against its own factor's unit.
+        XCTAssertEqual(plan.compounds[1].stockInDoseUnits ?? 0, 5_000_000, accuracy: 1)
+        XCTAssertFalse(
+            plan.allWarnings.contains { if case .unitsNotComparable = $0 { true } else { false } },
+            "each drug's stock is compared against its own unit, so neither is a mismatch"
+        )
     }
 
     func testAPlateScopedPlanOnlyCountsThatPlate() throws {
@@ -343,9 +367,11 @@ final class DilutionPlanTests: XCTestCase {
 
     func testANonNumericDoseIsSkippedAndNamed() throws {
         var layout = self.layout()
-        layout.factors[1].levels.append(Level(name: "n/a", colorHex: "#888888"))
+        layout.factors[0].levels.append(Level(name: "n/a", colorHex: "#888888"))
         let plan = try XCTUnwrap(DilutionPlan.make(from: layout))
-        XCTAssertTrue(plan.warnings.contains(.nonNumericDose(name: "n/a")))
+        // The warning belongs to the drug now, not to the sheet: one factor's levels can
+        // be unreadable while another's are fine.
+        XCTAssertTrue(plan.allWarnings.contains(.nonNumericDose(name: "n/a")))
         XCTAssertEqual(plan.compounds[0].steps.count, 5, "still four doses and a vehicle")
     }
 
@@ -357,9 +383,11 @@ final class DilutionPlanTests: XCTestCase {
         })
     }
 
-    func testNoDoseFactorMeansNoPlan() {
+    /// Marking a factor is the opt-in now, so a document with none has no sheet — even
+    /// when it has bench settings saved from a previous visit.
+    func testNoDilutionFactorMeansNoPlan() {
         var layout = self.layout()
-        layout.prep?.doseFactorID = nil
+        layout.factors[0].dilution = nil
         XCTAssertNil(DilutionPlan.make(from: layout))
         layout.prep = nil
         XCTAssertNil(DilutionPlan.make(from: layout))
@@ -402,27 +430,57 @@ final class DilutionPlanTests: XCTestCase {
         let document = PlateDocument()
         let editor = PlateEditor(document: document)
         let factorID = document.layout.factors[0].id
-        let levelID = document.layout.factors[0].levels[0].id
 
         // Attached after setup, or every edit above coalesces into this group.
         let undo = UndoManager()
         editor.undoManager = undo
 
-        editor.setStock(StockConcentration(value: 10, unit: "mM"), for: levelID, in: factorID)
-        XCTAssertEqual(document.layout.factors[0].levels[0].stock?.value, 10)
+        editor.setFactorStock(factorID, stock: StockConcentration(value: 10, unit: "mM"))
+        XCTAssertEqual(document.layout.factors[0].dilution?.stock?.value, 10)
         undo.undo()
-        XCTAssertNil(document.layout.factors[0].levels[0].stock)
+        XCTAssertNil(document.layout.factors[0].dilution)
     }
 
     func testAZeroStockClearsRatherThanStoringNothing() {
         let document = PlateDocument()
         let editor = PlateEditor(document: document)
         let factorID = document.layout.factors[0].id
-        let levelID = document.layout.factors[0].levels[0].id
 
-        editor.setStock(StockConcentration(value: 10, unit: "mM"), for: levelID, in: factorID)
-        editor.setStock(StockConcentration(value: 0, unit: "mM"), for: levelID, in: factorID)
-        XCTAssertNil(document.layout.factors[0].levels[0].stock)
+        editor.setFactorStock(factorID, stock: StockConcentration(value: 10, unit: "mM"))
+        editor.setFactorStock(factorID, stock: StockConcentration(value: 0, unit: "mM"))
+        XCTAssertNil(document.layout.factors[0].dilution?.stock,
+                     "a unit typed before a number is not a stock")
+        XCTAssertNotNil(document.layout.factors[0].dilution,
+                        "but the factor is still one you make by dilution")
+    }
+
+    /// Typing a stock says what you mean, so it marks the factor too.
+    func testSettingAStockMarksTheFactorAsADilution() {
+        let document = PlateDocument()
+        let editor = PlateEditor(document: document)
+        let factorID = document.layout.factors[0].id
+
+        XCTAssertNil(document.layout.factors[0].dilution)
+        editor.setFactorStock(factorID, stock: StockConcentration(value: 10, unit: "mM"))
+        XCTAssertNotNil(document.layout.factors[0].dilution)
+    }
+
+    /// Turning the toggle off takes the stock with it — the two are one fact about the
+    /// factor — and ⌘Z brings both back, because it is one edit.
+    func testUnmarkingAFactorTakesItsStockAndUndoBringsItBack() {
+        let document = PlateDocument()
+        let editor = PlateEditor(document: document)
+        let factorID = document.layout.factors[0].id
+        editor.setFactorStock(factorID, stock: StockConcentration(value: 10, unit: "mM"))
+
+        let undo = UndoManager()
+        editor.undoManager = undo
+
+        editor.setFactorIsDilution(factorID, false)
+        XCTAssertNil(document.layout.factors[0].dilution)
+
+        undo.undo()
+        XCTAssertEqual(document.layout.factors[0].dilution?.stock?.value, 10)
     }
 
     func testTheFirstPrepEditSeedsASetupFromTheDocument() {
@@ -433,19 +491,17 @@ final class DilutionPlanTests: XCTestCase {
         XCTAssertNil(document.layout.prep, "nothing until it is asked for")
         editor.updatePrep { $0.wellVolume = 50 }
         XCTAssertEqual(document.layout.prep?.wellVolume, 50)
-        XCTAssertEqual(
-            document.layout.prep?.doseFactorID, document.layout.factors[0].id,
-            "the first numeric factor is the dose after a Series Fill"
-        )
     }
 
-    /// A compound carries its stock into another document, the way its colour does.
-    func testACopiedCompoundArrivesWithItsStock() throws {
+    /// A drug carries its stock into another document, the way its unit does.
+    func testACopiedDrugArrivesWithItsStock() throws {
         let document = PlateDocument()
         let editor = PlateEditor(document: document)
         document.layout.factors[0].name = "Drug"
         document.layout.factors[0].levels[0].name = "Cpd1"
-        document.layout.factors[0].levels[0].stock = StockConcentration(value: 10, unit: "mM")
+        document.layout.factors[0].dilution = Dilution(
+            stock: StockConcentration(value: 10, unit: "mM")
+        )
         let factor = document.layout.factors[0]
         document.layout.plates[0].setLevelID(factor.levels[0].id, factor: factor.id, well: 0)
 
@@ -458,10 +514,9 @@ final class DilutionPlanTests: XCTestCase {
         otherEditor.selection = WellRange(single: WellPos(row: 2, col: 2))
         otherEditor.pasteWells()
 
-        let arrived = other.layout.factors
-            .first { $0.name == "Drug" }?.levels.first { $0.name == "Cpd1" }
-        XCTAssertEqual(arrived?.stock?.value, 10)
-        XCTAssertEqual(arrived?.stock?.unit, "mM")
+        let arrived = other.layout.factors.first { $0.name == "Drug" }
+        XCTAssertEqual(arrived?.dilution?.stock?.value, 10)
+        XCTAssertEqual(arrived?.dilution?.stock?.unit, "mM")
     }
 
     // MARK: - Pipette rounding
@@ -487,28 +542,23 @@ final class PrepTableTests: XCTestCase {
 
     private func layout(doses: [String], wells: Int = 24) -> Layout {
         var layout = Layout(plates: [Plate(name: "Plate 1", format: .well384)])
-        var dose = Factor(name: "Dose", kind: .numeric, unit: "µM")
+        var drug = Factor(
+            name: "Cpd1", kind: .numeric, unit: "µM",
+            dilution: Dilution(stock: StockConcentration(value: 10, unit: "mM"))
+        )
         for (index, name) in (doses + ["0"]).enumerated() {
-            dose.levels.append(Level(name: name, colorHex: Palette.color(at: index)))
+            drug.levels.append(Level(name: name, colorHex: Palette.color(at: index)))
         }
-        var drug = Factor(name: "Drug")
-        drug.levels = [
-            Level(name: "Cpd1", colorHex: Palette.color(at: 6),
-                  stock: StockConcentration(value: 10, unit: "mM")),
-        ]
-        layout.factors = [drug, dose]
+        layout.factors = [drug]
 
         var well = 0
-        for level in dose.levels {
+        for level in drug.levels {
             for _ in 0..<wells {
-                layout.plates[0].setLevelID(level.id, factor: dose.id, well: well)
-                layout.plates[0].setLevelID(drug.levels[0].id, factor: drug.id, well: well)
+                layout.plates[0].setLevelID(level.id, factor: drug.id, well: well)
                 well += 1
             }
         }
         var prep = PrepSetup()
-        prep.doseFactorID = dose.id
-        prep.compoundFactorID = drug.id
         prep.wellVolume = 100
         prep.addedVolume = 10
         prep.overage = Overage(mode: .percent, percent: 20)

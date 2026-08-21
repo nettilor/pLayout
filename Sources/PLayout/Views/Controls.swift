@@ -57,6 +57,65 @@ struct CommitTextField: View {
     }
 }
 
+/// A stock concentration: a number and the unit it is in.
+///
+/// The unit lives in `@State` here rather than only in the model, and that is
+/// load-bearing. Clearing the number clears the whole `StockConcentration` — "not set" is
+/// one state, not a value and a unit that can be half-present — so with nowhere else to
+/// keep it the unit went with the number, and the next figure typed fell back to the
+/// default. Correcting a 10 mM stock to 5 stored **5 µM**: a thousandfold error on a
+/// printed sheet with nothing anywhere to warn you. It also means a unit typed before a
+/// number survives, where it used to be dropped on the floor.
+struct StockField: View {
+    let stock: StockConcentration?
+    /// Shown as the placeholder and used when a number is typed before any unit is —
+    /// the factor's own unit is the likeliest answer.
+    let defaultUnit: String
+    var font: Font = .body
+    var valueWidth: CGFloat = 70
+    var unitWidth: CGFloat = 80
+    let onCommit: (StockConcentration?) -> Void
+
+    @State private var unit: String = ""
+
+    private var effectiveUnit: String { unit.isEmpty ? defaultUnit : unit }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            // An optional binding, so a factor with no stock shows an empty field rather
+            // than a zero — "not set" and "zero" are different things here.
+            TextField(
+                "—",
+                value: Binding<Double?>(
+                    get: { stock?.isUsable == true ? stock?.value : nil },
+                    set: { value in
+                        guard let value else { return onCommit(nil) }
+                        onCommit(StockConcentration(value: value, unit: effectiveUnit))
+                    }
+                ),
+                format: .number
+            )
+            .font(font)
+            .frame(width: valueWidth)
+            CommitTextField(
+                placeholder: defaultUnit.isEmpty ? "mM" : defaultUnit,
+                text: unit, font: font, allowsEmpty: true
+            ) { typed in
+                unit = typed
+                onCommit(StockConcentration(value: stock?.value ?? 0, unit: typed))
+            }
+            .frame(width: unitWidth)
+        }
+        .onAppear { unit = stock?.unit ?? "" }
+        // The model still wins when it changes underneath — an undo, or a stock arriving
+        // with a pasted factor. A stock cleared to nil deliberately does *not* clear the
+        // unit: that is the whole point of keeping it here.
+        .onChange(of: stock?.unit) { _, new in
+            if let new, new != unit { unit = new }
+        }
+    }
+}
+
 /// A row's name: plain text normally, an editable field while `isEditing`.
 ///
 /// It carries **no gestures at all**. Every attempt to put one here — exclusive or
