@@ -165,7 +165,7 @@ touches a document that started from it.
 | arrows | Move the cursor; `⇧`-arrows extend the selection |
 | pinch | Zoom in; `⌘0` fits the whole plate again |
 | `⌥⌘C` / `⌥⌘V` | Copy the selected wells with every factor, and put them down again |
-| `⌥⌘P` | Pipetting prep sheet — the dilutions and volumes for the doses on the plate |
+| `⌥⌘P` | Pipetting prep sheet — the tubes and volumes for the drugs on the plate |
 | `⇧⌘K` | Canvas — every plate, the prep table and your notes on one board |
 | `⌘Z` | Undo (every edit is one step) |
 
@@ -359,7 +359,11 @@ cell, the way the workbook's one-cell map does.
   A third option adds a **one-cell map** per plate: every factor's value for the
   well joined into a single string — `Side+CpG+LN+OVA` — with a separator of
   your choosing (blank means `+`). Handy for tools that want one label per well.
-- **Tidy CSV (`⇧⌘E`)** — just the one-row-per-well table.
+- **Tidy CSV (`⇧⌘E`)** — just the one-row-per-well table. A document with a drug in it
+  is asked which shape you want: a column per factor, or **one row per well per drug**
+  with `Compound`, `Concentration` and `Unit` columns — the long form analysis wants, so
+  you can group by compound and plot straight against concentration. The workbook carries
+  both, as **Wells** and **Wells (long)**.
 - **Prep tab** — the pipetting plan, in any workbook from a document that has one. Turn it
   off in the prep window rather than in the save panel, next to the numbers it governs.
 - **Plate image** — PNG or vector PDF of the plate for a lab notebook or figure.
@@ -442,13 +446,20 @@ away when you want it.
 
 ## Pipetting prep sheet
 
-**Plate → Pipetting Prep Sheet…** (`⌥⌘P`) turns the doses on the plate into the tubes you
-have to make. It opens in its own window, beside the plate rather than on top of it, and
-follows the layout as you paint.
+**Plate → Pipetting Prep Sheet…** (`⌥⌘P`) turns the dilutions on the plate into the tubes
+you have to make. It opens in its own window, beside the plate rather than on top of it,
+and follows the layout as you paint.
 
-Tell it three things — which factor carries the doses, which carries the compounds, and
-what each compound's stock is — plus how much goes in a well and how much of that is the
-addition. Everything else it already knows.
+**A factor is the drug.** Make a factor called "Drug A", give it a unit, and let its
+conditions be the concentrations you use it at — which is exactly what **Series Fill**
+(`⇧⌘D`) writes. Then tick **Made by dilution** on it and say what your stock is. That is
+the whole setup: several drugs are several factors, each with its own concentrations, its
+own unit and its own stock, and the sheet works out the rest from what is painted.
+
+The tick and the stock are in the sidebar under the factor's unit, and again in the prep
+window, where every factor is listed so you can see at a glance which are drugs. A factor
+with no stock yet still gets its volumes — only the "take this much from stock" line waits
+for the number.
 
 | | |
 | --- | --- |
@@ -456,16 +467,16 @@ addition. Everything else it already knows.
 | **Serial or not** | A constant fold series — what Series Fill writes — is made serially, each tube from the one above. A linear or hand-typed series cannot be, so each tube is made straight from the stock. It says which it did, every time. |
 | **Total volumes** | The part worth having software for: each tube holds enough for its own wells **and** for the transfer that makes the next one, and the well counts come from the plate itself. |
 | **Extra** | A percentage, a percentage with a floor, or a flat number of µL — whichever matches how your bench thinks about dead volume. |
-| **The vehicle** | A dose of `0` becomes a vehicle tube with the solvent matched to the top dose, so the control differs in one thing only. |
+| **The vehicle** | A concentration of `0` becomes a vehicle tube with the solvent matched to the top dose, so the control differs in one thing only. |
+| **Each drug apart** | Every drug is worked out from its own painted wells, so two can run different ranges at different folds — and, since a well may carry more than one, a combination well counts for each of them. |
 
 It also says what is about to go wrong: a volume under the smallest you said you can
 pipette accurately, a stock too weak for the top tube, doses and stock in units that
 cannot be converted without a molecular weight, and the solvent percentage in the well —
 `dose ÷ stock`, whatever the volumes are.
 
-Stocks are stored in the document, so reopening the experiment remembers them, and a
-compound's stock shows on its condition row in the sidebar. `⌘P` prints the sheet while
-its window is in front, and the Excel workbook gains a **Prep** tab.
+Stocks are stored in the document, so reopening the experiment remembers them. `⌘P` prints
+the sheet while its window is in front, and the Excel workbook gains a **Prep** tab.
 
 ## Imaging positions
 

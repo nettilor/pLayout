@@ -1889,8 +1889,25 @@ final class PlateEditor: ObservableObject {
     }
 
     func exportCSV() {
-        let text = CSV.serialize(Exporter.tidyGrid(layout: layout))
-        save(data: Data(text.utf8), name: suggestedBaseName, ext: "csv")
+        // Only worth asking when the document has a drug to collapse; otherwise the two
+        // shapes are the same file. Same rule as the image panel's outline checkbox.
+        let options = layout.factors.contains { $0.dilution != nil }
+            ? TidyExportAccessory(selected: TidyShape.remembered)
+            : nil
+        save(
+            data: {
+                // Read *inside* the closure: `save` builds the data lazily so the panel
+                // can be read after it closes, and reading it eagerly would export the
+                // remembered shape rather than the chosen one.
+                let shape = options?.selectedShape ?? .wide
+                shape.remember()
+                let grid = shape == .long
+                    ? Exporter.tidyLongGrid(layout: self.layout)
+                    : Exporter.tidyGrid(layout: self.layout)
+                return Data(CSV.serialize(grid).utf8)
+            }(),
+            name: suggestedBaseName, ext: "csv", accessory: options
+        )
     }
 
     func exportPNG() {

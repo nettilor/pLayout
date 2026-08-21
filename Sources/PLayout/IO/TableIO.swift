@@ -242,6 +242,11 @@ enum Exporter {
         }
 
         sheets.append(tidySheet(layout: layout))
+        // Appended after Wells, and only when there is a drug to collapse — the same
+        // opt-in rule the Prep tab follows, and no extra control in the save panel.
+        if layout.factors.contains(where: { $0.dilution != nil }) {
+            sheets.append(tidyLongSheet(layout: layout))
+        }
         sheets.append(legendSheet(layout: layout))
         // Last, so no existing workbook changes shape, and only when the document has a
         // prep setup — which is the opt-in, and why there is no extra save-panel control.
@@ -397,6 +402,76 @@ enum Exporter {
         return grid
     }
 
+    /// The same wells in long form: one row per well **per drug**, with the dilution
+    /// factors collapsed into `Compound` / `Concentration` / `Unit` columns.
+    ///
+    /// `tidyGrid` gives one column per factor, which is right until a plate carries
+    /// several drugs — then each is a column that is blank wherever the others are not.
+    /// Long is the shape analysis actually wants: group by compound, plot against
+    /// concentration, no reshaping first.
+    ///
+    /// A well with two drugs on it emits two rows, identical but for those three
+    /// columns — that is the whole point of the shape. A well with none emits one row
+    /// with them blank, because its other factors are still data and dropping the row
+    /// would silently lose the well. `Unit` is always there even when every drug agrees,
+    /// so a reader's code never has to branch on whether it is a column or a suffix.
+    static func tidyLongGrid(layout: Layout, includeUnassigned: Bool = true) -> [[String]] {
+        let multiPlate = layout.plates.count > 1
+        let anyNotes = layout.plates.contains { !$0.wellNotes.isEmpty }
+        let drugs = layout.factors.filter { $0.dilution != nil }
+        let others = layout.factors.filter { $0.dilution == nil }
+
+        var header: [String] = []
+        if multiPlate { header.append("Plate") }
+        header.append(contentsOf: ["Well", "Row", "Column"])
+        header.append(contentsOf: others.map { $0.displayName })
+        // `name`, not `displayName`: the unit has a column of its own here.
+        header.append(contentsOf: ["Compound", "Concentration", "Unit"])
+        if anyNotes { header.append("Note") }
+
+        var grid: [[String]] = [header]
+        for plate in layout.plates {
+            for r in 0..<plate.format.rows {
+                for c in 0..<plate.format.cols {
+                    let well = plate.format.index(row: r, col: c)
+                    func value(_ factor: Factor) -> String {
+                        guard let id = plate.levelID(factor: factor.id, well: well) else { return "" }
+                        return factor.level(id: id)?.name ?? ""
+                    }
+                    let otherValues = others.map(value)
+                    let painted = drugs.compactMap { drug -> (Factor, String)? in
+                        let name = value(drug)
+                        return name.isEmpty ? nil : (drug, name)
+                    }
+                    // Decided across every factor before the fan-out, so a well is kept
+                    // or dropped once rather than once per drug.
+                    if !includeUnassigned, otherValues.allSatisfy(\.isEmpty), painted.isEmpty {
+                        continue
+                    }
+
+                    func row(_ compound: String, _ concentration: String, _ unit: String) -> [String] {
+                        var row: [String] = []
+                        if multiPlate { row.append(plate.name) }
+                        row.append(WellNaming.wellLabel(row: r, col: c, padded: layout.padWellLabels))
+                        row.append(WellNaming.rowLabel(r))
+                        row.append("\(c + 1)")
+                        row.append(contentsOf: otherValues)
+                        row.append(contentsOf: [compound, concentration, unit])
+                        if anyNotes { row.append(plate.note(well: well) ?? "") }
+                        return row
+                    }
+
+                    if painted.isEmpty {
+                        grid.append(row("", "", ""))
+                    } else {
+                        for (drug, name) in painted { grid.append(row(drug.name, name, drug.unit)) }
+                    }
+                }
+            }
+        }
+        return grid
+    }
+
     /// The bench recipe as a sheet: what to put in which tube, and how much of it.
     ///
     /// Volumes arrive already rounded to what a pipette can be set to — the writer has no
@@ -431,13 +506,13 @@ enum Exporter {
                     bold: true, centered: false
                 ),
             ]
+            // Each drug says its own unit here rather than the sheet naming one for all
+            // of them — a plan can hold a series in µM beside one in ng/mL.
+            if !compound.unit.isEmpty { heading.append(.text("in \(compound.unit)")) }
             // `isUsable`, not just non-nil: a stock of 0 is one nothing can be diluted
             // from, which is why the plan refuses to use it and warns. Printing
             // "stock 0 mM" reads as a measured concentration and contradicts both the
             // window and the printout, which call that "no stock set".
-            // Each drug says its own unit here rather than the sheet naming one for all
-            // of them — a plan can hold a series in µM beside one in ng/mL.
-            if !compound.unit.isEmpty { heading.append(.text("in \(compound.unit)")) }
             let stock = compound.stock.flatMap { $0.isUsable ? "stock \($0.label)" : nil }
             heading.append(.text(stock ?? "no stock set"))
             heading.append(.text(compound.method.label))
@@ -486,19 +561,37 @@ enum Exporter {
     }
 
     private static func tidySheet(layout: Layout) -> XLSX.Sheet {
-        let grid = tidyGrid(layout: layout)
-        let numericColumns = Set(layout.factors.enumerated().compactMap { index, factor in
-            factor.kind == .numeric ? index : nil
-        })
         let leading = (layout.plates.count > 1 ? 1 : 0) + 3
+        let numericColumns = Set(layout.factors.enumerated().compactMap { index, factor in
+            factor.kind == .numeric ? leading + index : nil
+        })
+        return sheet(named: "Wells", grid: tidyGrid(layout: layout), numeric: numericColumns)
+    }
 
+    /// The long form: `Compound` / `Concentration` / `Unit` instead of a column per drug.
+    /// Only worth a sheet when the document has a drug to collapse.
+    private static func tidyLongSheet(layout: Layout) -> XLSX.Sheet {
+        let grid = tidyLongGrid(layout: layout)
+        // The concentration is the second of the three trailing columns, before any Note.
+        let anyNotes = layout.plates.contains { !$0.wellNotes.isEmpty }
+        let width = grid.first?.count ?? 0
+        let concentration = width - (anyNotes ? 1 : 0) - 2
+        return sheet(named: "Wells (long)", grid: grid, numeric: [concentration])
+    }
+
+    /// Shared so the two grids cannot disagree about headers, widths or which columns
+    /// arrive as numbers. Numeric columns are given by index into the finished grid,
+    /// rather than worked out again from arithmetic over the leading columns.
+    private static func sheet(
+        named name: String, grid: [[String]], numeric: Set<Int>
+    ) -> XLSX.Sheet {
         var rows: [[XLSX.Cell]] = []
         for (i, row) in grid.enumerated() {
             if i == 0 {
                 rows.append(row.map { .header($0) })
             } else {
                 rows.append(row.enumerated().map { column, text in
-                    if column >= leading, numericColumns.contains(column - leading), let n = Double(text) {
+                    if numeric.contains(column), let n = Double(text) {
                         return XLSX.Cell(value: .number(n))
                     }
                     return .text(text)
@@ -508,7 +601,7 @@ enum Exporter {
         let widths = grid.first.map { header in
             header.map { Double(max(9, min(24, $0.count + 4))) }
         } ?? []
-        return XLSX.Sheet(name: "Wells", rows: rows, columnWidths: widths, freezeRows: 1, freezeCols: 0)
+        return XLSX.Sheet(name: name, rows: rows, columnWidths: widths, freezeRows: 1, freezeCols: 0)
     }
 
     private static func legendSheet(layout: Layout) -> XLSX.Sheet {

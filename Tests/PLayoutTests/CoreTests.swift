@@ -679,6 +679,53 @@ final class WorkbookTests: XCTestCase {
         }
     }
 
+    /// The long form is what analysis actually wants: group by compound, plot against
+    /// concentration. One column per factor is right until a plate carries several drugs,
+    /// and then each is a column that is blank wherever the others are not.
+    func testTheLongFormGivesOneRowPerWellPerDrug() throws {
+        var layout = prepLayout()
+        // A second drug, and one well painted with both — which the shape has to split.
+        var other = Factor(
+            name: "Cpd2", kind: .numeric, unit: "ng/mL",
+            dilution: Dilution(stock: StockConcentration(value: 1, unit: "mg/mL"))
+        )
+        other.levels = [Level(name: "50", colorHex: Palette.color(at: 7))]
+        layout.factors.append(other)
+        layout.plates[0].setLevelID(other.levels[0].id, factor: other.id, well: 0)
+
+        let grid = Exporter.tidyLongGrid(layout: layout)
+        XCTAssertEqual(
+            grid[0].suffix(3), ["Compound", "Concentration", "Unit"],
+            "the drugs collapse into three columns however many of them there are"
+        )
+        let a1 = grid.filter { $0.first == "A1" }
+        XCTAssertEqual(a1.count, 2, "a well with two drugs on it is two rows")
+        XCTAssertEqual(a1.map { $0[$0.count - 3] }, ["Cpd1", "Cpd2"])
+        XCTAssertEqual(a1.map { $0.last }, ["µM", "ng/mL"], "each drug brings its own unit")
+        // Every other column is identical between the two rows — only the drug differs.
+        XCTAssertEqual(Array(a1[0].prefix(3)), Array(a1[1].prefix(3)))
+    }
+
+    /// A well with no drug is still a well. Dropping it would silently lose it, along
+    /// with whatever its other factors said.
+    func testAWellWithNoDrugIsStillOneRow() throws {
+        let layout = prepLayout()
+        let grid = Exporter.tidyLongGrid(layout: layout)
+        let empty = try XCTUnwrap(grid.first { $0.first == "H12" })
+        XCTAssertEqual(empty.suffix(3), ["", "", ""], "blank, but present")
+        XCTAssertEqual(grid.filter { $0.first == "H12" }.count, 1)
+    }
+
+    /// The sheet is added only when there is a drug to collapse — otherwise it would be
+    /// the Wells sheet again under a second name.
+    func testTheLongSheetAppearsOnlyWhenThereIsADrug() throws {
+        var layout = prepLayout()
+        XCTAssertTrue(try sheetNames(of: Exporter.workbook(from: layout)).contains("Wells (long)"))
+
+        layout.factors[0].dilution = nil
+        XCTAssertFalse(try sheetNames(of: Exporter.workbook(from: layout)).contains("Wells (long)"))
+    }
+
     /// The other half of that rule, so widening the gate cannot leave a sheet of nothing
     /// but headings in the workbook: a setup over an unpainted plate has no tubes *and*
     /// nothing to warn about, and still adds no tab.
