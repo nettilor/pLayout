@@ -36,6 +36,7 @@ Mac `ShortcutsCard`, the README table, the menu item **and this file** in the sa
 | Pipetting prep sheet: serial/individual dilutions, compound × dose, totals from the well counts | ⌥⌘P | Ctrl+Alt+P | ⏳ | — | 1.5; own window, not a dialog. `Level.stock` and `Layout.prep` are new in the file format — **the port must decode both leniently before it can open a 1.5 file** |
 | Stock concentration on a condition row in the sidebar | | | ⏳ | — | 1.5; only on the prep sheet's compound factor, only when set |
 | Canvas board: plates, prep table and notes as cards; active card editable in place | ⇧⌘K | Ctrl+Shift+K | ⏳ | — | 1.5; `Layout.canvas` is a new optional key — an ordered `items` array, **not** a dict, since draw order is z-order. Placement is computed at display time and only written when a card is moved |
+| Canvas: double-click a card's title bar to trim it to its plate | | | ⏳ | — | 1.5; the plate keeps its cell size — the card loses the margin the geometry centres it in. Undershoots by a whisker on purpose so repeating it cannot creep |
 
 ## Colours
 

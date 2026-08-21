@@ -28,6 +28,9 @@ struct PlateGeometry {
     static let maxCell: CGFloat = 96
     /// Not zero: hit-testing divides by this, and 0 would trap on the Int conversion.
     static let minCell: CGFloat = 0.01
+    /// Clear space kept on every side of the plate. The line key is drawn into the
+    /// bottom one rather than asking for room of its own.
+    static let pad: CGFloat = 14
 
     /// A quarter or three-quarter turn stands the plate on end; a half turn leaves the
     /// grid the same shape upside down.
@@ -51,7 +54,7 @@ struct PlateGeometry {
         let onEnd = self.quarterTurns % 2 == 1
         let gridRows = onEnd ? format.cols : format.rows
         let gridCols = onEnd ? format.rows : format.cols
-        let pad: CGFloat = 14
+        let pad = Self.pad
         let availableW = max(bounds.width - pad * 2, 1)
         let availableH = max(bounds.height - pad * 2, 1)
         let minHeaderW: CGFloat = 26
@@ -349,6 +352,31 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         cancellable = trigger
             .receive(on: DispatchQueue.main)
             .sink { [weak self] in self?.needsDisplay = true }
+    }
+
+    /// The smallest bounds that still draw this plate exactly as it is drawn now.
+    ///
+    /// `PlateGeometry` centres the plate in whatever room it is given, so a card whose
+    /// shape does not match the plate's carries empty margin on two sides. This is the
+    /// same picture with that slack taken out: the cell size does not change, so nothing
+    /// moves or resizes — the card simply stops being bigger than its plate.
+    ///
+    /// Solving against these bounds gives back all but a whisker of the cell size they
+    /// were measured from — both axes bind at once, which is as close to a fixed point
+    /// as the geometry's solve has. It is not exact: the solve starts from the smallest
+    /// possible headers and only ever takes `min`, so a header that grows with that
+    /// first estimate lands the result a fraction low — about a tenth of a percent, or
+    /// three hundredths of a point per well.
+    ///
+    /// Deliberately not padded to make up the difference. Padding overshoots instead,
+    /// and because the next trim measures the *new* frame it would creep the card larger
+    /// every time the gesture was used. Undershooting settles: a second trim moves the
+    /// card by less than the half-point `sizeToFitContent` bothers with, so trimming
+    /// twice is trimming once. The line key lives in the padding and needs no room here.
+    var snugSize: CGSize {
+        let frame = geometry.frameRect
+        return CGSize(width: frame.width + PlateGeometry.pad * 2,
+                      height: frame.height + PlateGeometry.pad * 2)
     }
 
     /// A detached canvas at a stated size, for exporting and printing without depending

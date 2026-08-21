@@ -427,10 +427,14 @@ select on it, use the keyboard, exactly as you would on its own. The others are 
 (they redraw as the document changes) but read-only; **click one and it becomes the
 editable one**, which the plate tabs and the accent-coloured card border both show.
 
-Drag a card by its title bar, resize it from the corner. The first card you move fixes
-the whole arrangement where it is, so nothing shuffles underneath you, and where you put
-things is saved in the document and travels with it. Double-click empty board to drop a
-note; double-click a note to write in it, and empty it to throw it away.
+Drag a card by its title bar, resize it from the corner or from anywhere along the right
+and bottom edges. **Double-click a card's title bar and it trims to its contents** — the
+plate with no empty margin round it, or the prep table at the height its rows need. The
+plate itself does not change size; the card just stops being bigger than it. The first
+card you move fixes the whole arrangement where it is, so nothing shuffles underneath
+you, and where you put things is saved in the document and travels with it. Double-click
+empty board to drop a note; double-click a note to write in it, and empty it to throw it
+away.
 
 Nothing about the board changes what a plate *is*: it is not exported, not printed, and
 not saved as a mode — a `.plate` always opens as a plate, and the board is one keystroke

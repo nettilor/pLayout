@@ -208,6 +208,66 @@ final class CanvasCardTests: XCTestCase {
         XCTAssertFalse(first.isEditable, "editability is derived, so it cannot go stale")
     }
 
+    // MARK: - Sizing a card to its plate
+
+    /// A card wider than its plate wants carries empty margin down both sides, because
+    /// the geometry centres the plate in whatever room it is given. Trimmed, the plate
+    /// keeps exactly the size it was already drawn at — the card just stops being bigger
+    /// than it.
+    func testTheSnugSizeTakesOutTheSlackWithoutMovingThePlate() throws {
+        // Deliberately the wrong shape for a 96-well: far wider than it is tall.
+        let (_, plate) = plateCard(size: NSSize(width: 900, height: 300))
+        let before = plate.bounds
+
+        let snug = plate.snugSize
+        XCTAssertLessThan(snug.width, before.width, "the wasted width should come off")
+        XCTAssertEqual(snug.height, before.height, accuracy: 0.5,
+                       "height was the binding axis, so it is already snug")
+
+        // Solving against the trimmed bounds gives back the cell it was measured from:
+        // both axes now bind at once, which is the fixed point of the geometry's solve.
+        // The property that matters is that the plate does not get *smaller* — trimming
+        // the card must never shave the picture it was trimmed around.
+        let cellBefore = PlateGeometry(format: .well96, bounds: before).cell
+        let cellAfter = PlateGeometry(
+            format: .well96, bounds: NSRect(origin: .zero, size: snug)
+        ).cell
+        XCTAssertEqual(cellAfter, cellBefore, accuracy: cellBefore * 0.005,
+                       "the plate should be the same size, to within a whisker")
+    }
+
+    /// Trimming twice is trimming once — otherwise repeating the gesture would creep the
+    /// card smaller every time.
+    func testTrimmingAnAlreadySnugCardChangesNothing() {
+        let (_, plate) = plateCard(size: NSSize(width: 900, height: 300))
+        let once = plate.snugSize
+        plate.frame = NSRect(origin: .zero, size: once)
+        let twice = plate.snugSize
+        XCTAssertEqual(twice.width, once.width, accuracy: 0.5)
+        XCTAssertEqual(twice.height, once.height, accuracy: 0.5)
+    }
+
+    /// The key under the plate is drawn into the padding the geometry always leaves, so
+    /// a trimmed card must still have room for it — it is the only legend an exported
+    /// image carries.
+    func testATrimmedCardStillHasRoomForTheLineKey() {
+        let (_, plate) = plateCard(size: NSSize(width: 900, height: 300))
+        let snug = plate.snugSize
+        let geo = PlateGeometry(format: .well96, bounds: NSRect(origin: .zero, size: snug))
+        XCTAssertGreaterThanOrEqual(
+            snug.height - geo.frameRect.maxY, 8,
+            "the line key needs 8 pt below the plate and would be dropped without it"
+        )
+    }
+
+    /// The chrome conversion is one pair, so a card sized to a body gives that body back.
+    func testACardSizedToABodyGivesThatBodyBack() {
+        let body = CGSize(width: 320, height: 240)
+        let round = CanvasCardView.bodySize(inCard: CanvasCardView.cardSize(forBody: body))
+        XCTAssertEqual(round.width, body.width)
+        XCTAssertEqual(round.height, body.height)
+    }
+
     // MARK: - The outline round a card
 
     /// Fills whatever it is given, the way a plate card's contents do.
@@ -323,13 +383,66 @@ final class CanvasCardTests: XCTestCase {
     }
 
     private func cardEvent(
-        _ type: NSEvent.EventType, at point: CGPoint, in card: CanvasCardView
+        _ type: NSEvent.EventType, at point: CGPoint, in card: CanvasCardView, clicks: Int = 1
     ) -> NSEvent {
         NSEvent.mouseEvent(
             with: type, location: card.convert(point, to: nil), modifierFlags: [],
             timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
-            context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+            context: nil, eventNumber: 0, clickCount: clicks, pressure: 1
         )!
+    }
+
+    /// Double-clicking a card's title bar trims it to its plate — the gesture end to end.
+    func testDoubleClickingTheTitleBarTrimsTheCardToItsPlate() {
+        let (card, _) = plateCard(size: NSSize(width: 900, height: 300))
+        var committed: CGRect?
+        card.onCommitFrame = { committed = $0 }
+        let onTitle = CGPoint(x: 120, y: 8)
+
+        card.mouseDown(with: cardEvent(.leftMouseDown, at: onTitle, in: card, clicks: 2))
+        XCTAssertNil(committed, "nothing may be written during the press")
+        XCTAssertEqual(card.frame.width, 900, "and the card must not move under the mouse")
+
+        card.mouseUp(with: cardEvent(.leftMouseUp, at: onTitle, in: card, clicks: 2))
+        XCTAssertLessThan(card.frame.width, 900, "the slack should have come off")
+        XCTAssertEqual(committed?.size.width, card.frame.width,
+                       "a trim is a frame change like any other, so it is one ⌘Z")
+    }
+
+    /// A double-click that turns into a drag is a drag. Otherwise starting a move with a
+    /// quick second click would resize the card out from under you.
+    func testADoubleClickThatMovesTheCardMovesItInsteadOfTrimming() {
+        let (card, _) = plateCard(size: NSSize(width: 900, height: 300))
+        let onTitle = CGPoint(x: 120, y: 8)
+        card.mouseDown(with: cardEvent(.leftMouseDown, at: onTitle, in: card, clicks: 2))
+        card.mouseDragged(with: cardEvent(
+            .leftMouseDragged, at: CGPoint(x: onTitle.x + 60, y: onTitle.y + 40), in: card, clicks: 2
+        ))
+        card.mouseUp(with: cardEvent(
+            .leftMouseUp, at: CGPoint(x: onTitle.x + 60, y: onTitle.y + 40), in: card, clicks: 2
+        ))
+        XCTAssertEqual(card.frame.width, 900, "it was dragged, so its size is untouched")
+    }
+
+    /// A note has no natural size, and double-clicking one already means "write in it".
+    func testDoubleClickingANoteOpensItRatherThanResizingIt() {
+        let card = CanvasCardView(itemID: UUID(), kind: .note)
+        card.frame = NSRect(x: 0, y: 0, width: 300, height: 220)
+        var opened = false
+        card.onOpen = { opened = true }
+        var committed: CGRect?
+        card.onCommitFrame = { committed = $0 }
+        let host = FlippedHost(frame: NSRect(x: 0, y: 0, width: 600, height: 400))
+        host.addSubview(card)
+        window.contentView = host
+
+        let onTitle = CGPoint(x: 100, y: 8)
+        card.mouseDown(with: cardEvent(.leftMouseDown, at: onTitle, in: card, clicks: 2))
+        card.mouseUp(with: cardEvent(.leftMouseUp, at: onTitle, in: card, clicks: 2))
+
+        XCTAssertTrue(opened)
+        XCTAssertEqual(card.frame.size, NSSize(width: 300, height: 220))
+        XCTAssertNil(committed)
     }
 
     /// The grip was a 26 pt square in the corner sitting on top of the 10 pt bands.

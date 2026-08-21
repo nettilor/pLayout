@@ -457,6 +457,7 @@ struct ShortcutsCard: View {
         Row(key: "click ↻ corner", detail: "Turn the plate 90°, and back again (⇧⌘L)"),
         Row(key: "⇧⌘O", detail: "Overview — every factor at once, nothing armed"),
         Row(key: "⇧⌘K", detail: "Canvas — plates, prep and notes side by side"),
+        Row(key: "double-click bar", detail: "On the canvas: trim a card to fit its plate"),
         Row(key: "pinch", detail: "Zoom in  ·  ⌘0 fits the plate again"),
         Row(key: "⌘C  /  ⌘V", detail: "Copy / paste as Excel cells"),
         Row(key: "⇧⌘C", detail: "Copy including row & column headers"),

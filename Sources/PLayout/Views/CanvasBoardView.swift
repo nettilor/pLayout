@@ -410,6 +410,12 @@ final class CanvasCardView: NSView {
 
     private enum Drag { case none, move, resize }
     private var drag: Drag = .none
+    /// Set by a double-click on the title bar, acted on at mouse *up*.
+    ///
+    /// Never during the press: trimming the card commits a frame, and a document write
+    /// mid-press reloads the board underneath the drag AppKit is about to send — the
+    /// trap this file records three separate proofs of.
+    private var wantsSizeToFit = false
     private var dragOrigin: CGPoint = .zero
     private var startFrame: CGRect = .zero
 
@@ -530,12 +536,20 @@ final class CanvasCardView: NSView {
         layoutContent()
     }
 
+    /// The room a card of this size gives its content, and its inverse. One pair, so
+    /// laying the content out and sizing the card to it cannot disagree about the chrome.
+    static func bodySize(inCard size: CGSize) -> CGSize {
+        CGSize(width: max(0, size.width - 2), height: max(0, size.height - titleHeight - 1))
+    }
+
+    static func cardSize(forBody size: CGSize) -> CGSize {
+        CGSize(width: size.width + 2, height: size.height + titleHeight + 1)
+    }
+
     private func layoutContent() {
         guard let content else { return }
-        let body = NSRect(
-            x: 1, y: Self.titleHeight,
-            width: max(0, bounds.width - 2), height: max(0, bounds.height - Self.titleHeight - 1)
-        )
+        let room = Self.bodySize(inCard: bounds.size)
+        let body = NSRect(x: 1, y: Self.titleHeight, width: room.width, height: room.height)
         // Only when it genuinely moved. Setting a view's `frame` calls `setFrameSize` even
         // when just the origin changed, so an unconditional invalidation here redrew every
         // plate on the board on every step of a drag.
@@ -594,6 +608,29 @@ final class CanvasCardView: NSView {
     }
 
     /// Where the two bands meet — the glyph's own square, not a larger one behind it.
+    /// Trims the card to its content: the plate with no empty margin round it, or the
+    /// prep table at the height its rows actually need. A note has no natural size — for
+    /// one, a double-click on the title bar opens it for writing instead.
+    ///
+    /// Committed like any other resize, so it is one ⌘Z.
+    private func sizeToFitContent() {
+        let body: CGSize
+        switch content {
+        case let plate as PlateCanvasView: body = plate.snugSize
+        case let table as PrepTableView:
+            body = CGSize(width: Self.bodySize(inCard: bounds.size).width,
+                          height: table.intrinsicContentSize.height)
+        default: return
+        }
+        let wanted = Self.cardSize(forBody: body)
+        let size = CGSize(width: max(CanvasFrame.minimum.width, wanted.width),
+                          height: max(CanvasFrame.minimum.height, wanted.height))
+        guard abs(size.width - frame.width) > 0.5 || abs(size.height - frame.height) > 0.5
+        else { return }
+        setFrameSize(size)
+        onCommitFrame?(frame)
+    }
+
     private var gripRect: NSRect {
         NSRect(x: bounds.maxX - Self.edgeGrab, y: bounds.maxY - Self.edgeGrab,
                width: Self.edgeGrab, height: Self.edgeGrab)
@@ -648,7 +685,10 @@ final class CanvasCardView: NSView {
             drag = .resize
         } else if point.y <= Self.titleHeight {
             drag = .move
-            if event.clickCount == 2 { onOpen?() }
+            if event.clickCount == 2 {
+                onOpen?()
+                wantsSizeToFit = true
+            }
         } else {
             drag = .none
             onActivate?()
@@ -696,9 +736,16 @@ final class CanvasCardView: NSView {
         guard drag != .none else { return }
         let wasResizing = drag == .resize
         let moved = frame != startFrame
+        let fitting = wantsSizeToFit && !moved
+        wantsSizeToFit = false
         drag = .none
         isDragging = false
         if wasResizing { layoutContent() }
+        if fitting {
+            // A double-click that turned into a drag is a drag; only a press that stayed
+            // put asks for the fit.
+            return sizeToFitContent()
+        }
         if moved {
             // Committed once, on mouse up: a drag is one ⌘Z, the same rule painting follows.
             onCommitFrame?(frame)
