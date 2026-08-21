@@ -456,10 +456,11 @@ conditions be the concentrations you use it at — which is exactly what **Serie
 the whole setup: several drugs are several factors, each with its own concentrations, its
 own unit and its own stock, and the sheet works out the rest from what is painted.
 
-The tick and the stock are in the sidebar under the factor's unit, and again in the prep
-window, where every factor is listed so you can see at a glance which are drugs. A factor
-with no stock yet still gets its volumes — only the "take this much from stock" line waits
-for the number.
+The stock sits in the sidebar beside the factor's unit, since it is the same kind of fact
+about the same thing, and typing one is enough to mark the factor as a drug. The tick
+itself lives in the prep window, where every factor is listed so you can see at a glance
+which are drugs and turn one off again. A factor with no stock yet still gets its volumes
+— only the "take this much from stock" line waits for the number.
 
 | | |
 | --- | --- |

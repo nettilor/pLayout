@@ -140,51 +140,46 @@ struct Sidebar: View {
     private var conditionsSection: some View {
         Section {
             if let factor = editor.activeFactor {
-                // Every factor gets the field, not just the numeric ones: a cell line
-                // has no unit but a seeding density, a timepoint and a volume all do,
-                // and none of them is a dose. Optional throughout — left blank it
-                // changes nothing, filled in it travels into every export heading.
-                HStack(spacing: 6) {
+                // Every factor gets both fields, not just the numeric ones: a cell line
+                // has no unit but a seeding density, a timepoint and a volume all do, and
+                // none of them is a dose. Optional throughout — left blank they change
+                // nothing, filled in the unit travels into every export heading and the
+                // stock into the prep sheet.
+                //
+                // Side by side because they are the same kind of fact about the factor:
+                // what its levels are in, and what they are diluted from. Typing a stock
+                // is also what marks the factor as one you make by dilution — the tick
+                // itself lives in the prep window (⌥⌘P), beside the volumes it governs.
+                //
+                // Every field has a stated width and the row ends in a spacer: a low
+                // layout priority beside a flexible one is starved to zero width, which
+                // is how the old stock chip managed never to appear at all.
+                HStack(spacing: 5) {
+                    // `fixedSize` on both labels: a sidebar row carries an implicit
+                    // one-line limit, so without it "Unit" and "Stock" truncate to "U…"
+                    // and "…" the moment the row is tight.
                     Text("Unit")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .fixedSize()
                     CommitTextField(
-                        placeholder: "µM, h, ng/mL…", text: factor.unit, font: .caption,
+                        placeholder: "µM…", text: factor.unit, font: .caption,
                         allowsEmpty: true
                     ) {
                         editor.setFactorUnit(factor.id, unit: $0)
                     }
-                }
-
-                // Directly under the unit because it is the same kind of fact about the
-                // factor: what its levels are in, and what they are diluted from. Ticking
-                // it is what puts this factor on the prep sheet (⌥⌘P).
-                Toggle(
-                    "Made by dilution",
-                    isOn: Binding(
-                        get: { factor.dilution != nil },
-                        set: { editor.setFactorIsDilution(factor.id, $0) }
-                    )
-                )
-                .toggleStyle(.checkbox)
-                .font(.caption)
-
-                if factor.dilution != nil {
-                    // Both fields have a stated width and the row ends in a spacer: a
-                    // low layout priority beside a flexible field is starved to zero
-                    // width, which is how the old stock chip managed never to appear.
-                    HStack(spacing: 6) {
-                        Text("Stock")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        StockField(
-                            stock: factor.dilution?.stock, defaultUnit: factor.unit,
-                            font: .caption, valueWidth: 56, unitWidth: 60
-                        ) {
-                            editor.setFactorStock(factor.id, stock: $0)
-                        }
-                        Spacer(minLength: 0)
+                    .frame(width: 38)
+                    Text("Stock")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
+                    StockField(
+                        stock: factor.dilution?.stock, defaultUnit: factor.unit,
+                        font: .caption, valueWidth: 38, unitWidth: 38
+                    ) {
+                        editor.setFactorStock(factor.id, stock: $0)
                     }
+                    Spacer(minLength: 0)
                 }
 
                 ForEach(Array(factor.levels.enumerated()), id: \.element.id) { index, level in
