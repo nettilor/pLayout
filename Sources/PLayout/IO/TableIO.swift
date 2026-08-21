@@ -491,7 +491,7 @@ enum Exporter {
         rows.append([XLSX.Cell(value: .text("Pipetting prep"), bold: true)])
         line("Covers", plan.scopeText)
         line(
-            "In each well",
+            "Each well holds",
             "\(number(setup.wellVolume)) µL, of which \(number(setup.addedVolume)) µL is added"
                 + " — tubes are \(number(setup.foldOverWell))× working solutions"
         )

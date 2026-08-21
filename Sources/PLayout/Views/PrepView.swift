@@ -77,7 +77,7 @@ struct PrepView: View {
             }
 
             section("Volumes") {
-                labelled("In each well") {
+                labelled("Each well holds") {
                     HStack(spacing: 6) {
                         volumeField(field(\.wellVolume, "Well Volume"))
                         Text("µL, of which").foregroundStyle(.secondary)
