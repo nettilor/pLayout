@@ -51,6 +51,13 @@ enum PrepWarning: Equatable {
         case .noWells(let compound):
             return "\(compound) has no wells on the plate, so there is nothing to make."
         case .addedVolumeExceedsWell(let added, let well):
+            // The same guard refuses both ends: nothing added, and more added than fits.
+            // One message cannot serve both — "you cannot add 0 µL to a well" reads as
+            // nonsense rather than as the remedy.
+            guard added > 0 else {
+                return "Nothing is added to the wells. Set how much of each well comes "
+                    + "from the tubes."
+            }
             return "You cannot add \(number(added)) µL to a well that ends up holding "
                 + "\(number(well)) µL. Set the added volume to the well volume or less."
         case .nonNumericDose(let name):
@@ -206,8 +213,11 @@ extension DilutionPlan {
 
     /// The whole plan for a document, or nil when the document has no prep setup.
     static func make(from layout: Layout) -> DilutionPlan? {
-        guard let setup = layout.prep else { return nil }
-        return make(from: layout, setup: setup)
+        // Marking a factor is the opt-in; the bench numbers are defaults until touched.
+        // Guarding on `layout.prep` here quietly required the prep window to have been
+        // opened once — a document with a marked drug and untouched settings exported a
+        // workbook with no Prep tab, against the gate's own stated intent.
+        make(from: layout, setup: layout.prep ?? PrepSetup())
     }
 
     /// The plan for a setup that may not have been committed to the document yet — which
@@ -326,6 +336,14 @@ extension DilutionPlan {
             }
         }
         actives.sort { $0.dose > $1.dose }
+
+        // A ticked drug with nothing painted has no tubes to show, and its block is
+        // hidden — so without this it simply vanishes from the sheet, and the only
+        // explanation lives in the sidebar's well counts. The warning is the mechanism
+        // that keeps an empty series honest.
+        if actives.isEmpty, vehicleWells == 0 {
+            warnings.append(.noWells(compound: name))
+        }
 
         let method = self.method(for: actives.map(\.dose), warnings: &warnings)
         var steps = tubes(

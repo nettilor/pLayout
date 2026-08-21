@@ -1308,11 +1308,6 @@ final class PlateEditor: ObservableObject {
     /// Opens the prep window, or brings it to the front if it is already up. No Overview
     /// guard, unlike every other sheet opener in this file: reading a prep plan with
     /// nothing armed is exactly what Overview is for.
-    /// Stable per document, for anything that needs to tell two open documents apart —
-    /// the prep window's saved frame, for one. Not the file name: a document is renamed
-    /// by Save As, and an untitled one has no name at all.
-    var documentIdentity: String { ObjectIdentifier(document).debugDescription }
-
     /// Called by the prep window when its document window closes: the editor lets go of
     /// the controller, which is the other half of breaking the cycle between them.
     func releasePrepWindow() {
@@ -1324,7 +1319,11 @@ final class PlateEditor: ObservableObject {
         prepWindow = controller
         // `canvas` is the document window's own plate view, so this is the document
         // window itself rather than whichever window happens to be key.
-        controller.follow(documentWindow: canvas?.window)
+        // `canvas` is the plate view's slot, and in canvas-board mode that view is
+        // gone — the weak reference is nil, and following nil silently never attaches,
+        // leaving the prep window orphaned when the document closes. The board lives in
+        // the same document window, so it is the fallback.
+        controller.follow(documentWindow: canvas?.window ?? board?.window)
         controller.refreshTitle(suggestedBaseName)
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
@@ -1333,6 +1332,16 @@ final class PlateEditor: ObservableObject {
     /// Every prep edit funnels through here, so each one is an ordinary undo step.
     func updatePrep(_ actionName: String = "Prep Settings", _ change: (inout PrepSetup) -> Void) {
         let seed = layout.prep ?? defaultPrepSetup()
+        // When the document has no setup yet, only a change that actually says something
+        // may create one. The window's numeric fields commit on losing focus whether or
+        // not anything was typed, and `nil → PrepSetup()` is a real edit `mutate` cannot
+        // short-circuit — so without this, tabbing through the prep window marked the
+        // file Edited. Once a setup exists, `mutate`'s own equality check is the guard.
+        if layout.prep == nil {
+            var probe = seed
+            change(&probe)
+            guard probe != seed else { return }
+        }
         edit(actionName) { layout in
             var setup = layout.prep ?? seed
             change(&setup)
@@ -1359,8 +1368,14 @@ final class PlateEditor: ObservableObject {
     func setFactorStock(_ factorID: UUID, stock: StockConcentration?) {
         edit("Stock Concentration") { layout in
             guard let i = layout.factorIndex(id: factorID) else { return }
+            let usable = (stock?.isUsable == true) ? stock : nil
+            // A cleared or unusable value on a factor that is not a dilution is nothing
+            // at all. Creating the marker for it would let a stray commit from an empty
+            // field — a field blurred, a unit typed with no number — silently turn
+            // "Cell line" into a drug and mark the document Edited.
+            guard usable != nil || layout.factors[i].dilution != nil else { return }
             var dilution = layout.factors[i].dilution ?? Dilution()
-            dilution.stock = (stock?.isUsable == true) ? stock : nil
+            dilution.stock = usable
             layout.factors[i].dilution = dilution
         }
     }
@@ -1836,7 +1851,7 @@ final class PlateEditor: ObservableObject {
         // under the open window.
         guard prepWindow?.window?.isKeyWindow == true else { return printPlate() }
         guard let plan = prepPlan else {
-            return flash("Nothing to print yet — pick the factor that carries the doses.")
+            return flash("Nothing to print yet — tick a factor as made by dilution.")
         }
         PrepTableView.print(plan: plan, jobName: "\(suggestedBaseName) — prep")
     }
@@ -1900,7 +1915,10 @@ final class PlateEditor: ObservableObject {
                 // can be read after it closes, and reading it eagerly would export the
                 // remembered shape rather than the chosen one.
                 let shape = options?.selectedShape ?? .wide
-                shape.remember()
+                // Remember only a choice that was actually offered — a drug-less
+                // document exporting "wide" must not overwrite the shape a document
+                // with drugs chose. Same rule as the workbook's plate scope.
+                if options != nil { shape.remember() }
                 let grid = shape == .long
                     ? Exporter.tidyLongGrid(layout: self.layout)
                     : Exporter.tidyGrid(layout: self.layout)

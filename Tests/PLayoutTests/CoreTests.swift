@@ -632,14 +632,17 @@ final class WorkbookTests: XCTestCase {
         return layout
     }
 
-    func testThePrepTabAppearsOnlyWhenThereIsASetup() throws {
+    /// Marking a factor is the opt-in — not the setup, which is only the bench numbers.
+    /// So the tab follows the mark, whether or not the prep window was ever opened, and
+    /// goes away with it.
+    func testThePrepTabFollowsTheMarkedDrug() throws {
         var layout = prepLayout()
         XCTAssertTrue(try sheetNames(of: Exporter.workbook(from: layout)).contains("Prep"))
 
-        layout.prep = nil
+        layout.factors[0].dilution = nil
         XCTAssertFalse(
             try sheetNames(of: Exporter.workbook(from: layout)).contains("Prep"),
-            "a document that never used the prep sheet exports exactly as before"
+            "with no drug marked, the document exports exactly as before"
         )
     }
 
@@ -677,6 +680,18 @@ final class WorkbookTests: XCTestCase {
         for warning in plan.allWarnings {
             XCTAssertTrue(xml.contains(warning.text), "the sheet omits: \(warning.text)")
         }
+    }
+
+    /// Marking a factor is the whole opt-in. The bench numbers are defaults until
+    /// touched, so a document whose drug is ticked but whose prep window was never
+    /// opened has `layout.prep == nil` — and it still earns its Prep tab. The gate used
+    /// to require the setup to exist, which quietly made "open the window once" a
+    /// hidden second opt-in.
+    func testAMarkedDrugEarnsItsPrepTabWithoutThePrepWindowEverOpening() throws {
+        var layout = prepLayout()
+        layout.prep = nil
+        XCTAssertNotNil(DilutionPlan.make(from: layout), "the plan itself must not require a setup")
+        XCTAssertTrue(try sheetNames(of: Exporter.workbook(from: layout)).contains("Prep"))
     }
 
     /// The long form is what analysis actually wants: group by compound, plot against
@@ -726,10 +741,11 @@ final class WorkbookTests: XCTestCase {
         XCTAssertFalse(try sheetNames(of: Exporter.workbook(from: layout)).contains("Wells (long)"))
     }
 
-    /// The other half of that rule, so widening the gate cannot leave a sheet of nothing
-    /// but headings in the workbook: a setup over an unpainted plate has no tubes *and*
-    /// nothing to warn about, and still adds no tab.
-    func testAPrepSetupWithNothingToSayStillAddsNoTab() throws {
+    /// A marked drug with nothing painted used to have nothing to say and silently added
+    /// no tab. It warns now — the block would otherwise just vanish — so the tab appears
+    /// and carries the explanation. The no-empty-sheet rule still holds: the sheet has
+    /// the warning on it, not headings over nothing.
+    func testAMarkedDrugWithNoWellsGetsATabThatSaysSo() throws {
         var layout = prepLayout()
         let drug = try XCTUnwrap(layout.factors.first { $0.dilution != nil })
         for well in 0..<layout.plates[0].format.wellCount {
@@ -737,9 +753,11 @@ final class WorkbookTests: XCTestCase {
         }
         let plan = try XCTUnwrap(DilutionPlan.make(from: layout))
         XCTAssertTrue(plan.isEmpty)
-        XCTAssertTrue(plan.allWarnings.isEmpty, "the premise: nothing to say either")
+        XCTAssertFalse(plan.allWarnings.isEmpty, "the empty series has to be explained")
 
-        XCTAssertFalse(try sheetNames(of: Exporter.workbook(from: layout)).contains("Prep"))
+        let xml = try prepSheetXML(of: Exporter.workbook(from: layout))
+        XCTAssertTrue(xml.contains("covers no wells") || xml.contains("no wells"),
+                      "the tab exists to carry the explanation")
     }
 
     /// Zero is not a concentration anything can be diluted from: the plan refuses to use

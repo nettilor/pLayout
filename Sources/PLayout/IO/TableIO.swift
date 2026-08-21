@@ -586,11 +586,19 @@ enum Exporter {
     /// Only worth a sheet when the document has a drug to collapse.
     private static func tidyLongSheet(layout: Layout) -> XLSX.Sheet {
         let grid = tidyLongGrid(layout: layout)
-        // The concentration is the second of the three trailing columns, before any Note.
+        // The concentration is the second of the three trailing columns, before any
+        // Note — and the non-drug factors keep the same numeric treatment they get on
+        // the Wells sheet, or a numeric timepoint would arrive as text on one sheet and
+        // as numbers on the other.
         let anyNotes = layout.plates.contains { !$0.wellNotes.isEmpty }
         let width = grid.first?.count ?? 0
-        let concentration = width - (anyNotes ? 1 : 0) - 2
-        return sheet(named: "Wells (long)", grid: grid, numeric: [concentration])
+        var numeric: Set<Int> = [width - (anyNotes ? 1 : 0) - 2]
+        let leading = (layout.plates.count > 1 ? 1 : 0) + 3
+        for (index, factor) in layout.factors.filter({ $0.dilution == nil }).enumerated()
+        where factor.kind == .numeric {
+            numeric.insert(leading + index)
+        }
+        return sheet(named: "Wells (long)", grid: grid, numeric: numeric)
     }
 
     /// Shared so the two grids cannot disagree about headers, widths or which columns

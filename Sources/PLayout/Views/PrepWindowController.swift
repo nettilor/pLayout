@@ -71,10 +71,13 @@ final class PrepWindowController: NSWindowController, NSWindowDelegate {
         // places — `idealWidth` on the view and an explicit content size here.
         window.setContentSize(NSSize(width: 660, height: 760))
         // Set last, so it restores a saved frame *over* that default rather than being
-        // overwritten by it. Per document, because AppKit refuses a name a live window
-        // already holds: with one shared name a second document's prep window silently
-        // took no frame at all and opened exactly on top of the first.
-        window.setFrameAutosaveName("PipettingPrepWindow-\(editor.documentIdentity)")
+        // overwritten by it. One shared name, taken by whichever prep window opens
+        // first: AppKit's Bool result says whether the name was free, so a second
+        // document's prep window simply goes without frame autosave rather than
+        // silently stealing the first one's. A per-document name was tried and was
+        // worse — it was derived from the object's identity, which changes every
+        // launch, so no prep window ever restored its frame at all.
+        _ = window.setFrameAutosaveName("PipettingPrepWindow")
         super.init(window: window)
         window.delegate = self
     }

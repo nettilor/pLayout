@@ -445,8 +445,12 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         // from the mode rather than from `activeFactor` alone: that keeps the drawing
         // correct on its own terms, including when a test sets the mode directly.
         let factor = mode.isOverview ? nil : editor.activeFactor
-        let selection = editor.selection?.clamped(to: format)
-        let customSelection = editor.customWells
+        // The selection belongs to the plate being edited, and these sets feed the
+        // header tint drawn well before the `isEditable` guard below — so a read-only
+        // card would highlight the active plate's rows and columns at the same
+        // coordinates, which reads as a selection it does not have.
+        let selection = isEditable ? editor.selection?.clamped(to: format) : nil
+        let customSelection = isEditable ? editor.customWells : nil
         let selectedRows: Set<Int>
         let selectedCols: Set<Int>
         if let customSelection {

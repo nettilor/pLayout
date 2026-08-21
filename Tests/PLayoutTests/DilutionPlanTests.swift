@@ -383,6 +383,57 @@ final class DilutionPlanTests: XCTestCase {
         })
     }
 
+    /// A ticked drug with nothing painted must say so rather than vanish: its block is
+    /// hidden (no tubes to show), so the warning is the only thing that explains where
+    /// it went.
+    func testATickedDrugWithNoPaintedWellsWarnsInsteadOfVanishing() throws {
+        var layout = self.layout()
+        let drug = layout.factors[0]
+        for well in 0..<layout.plates[0].format.wellCount {
+            layout.plates[0].setLevelID(nil, factor: drug.id, well: well)
+        }
+        let plan = try XCTUnwrap(DilutionPlan.make(from: layout))
+        XCTAssertTrue(plan.isEmpty)
+        XCTAssertTrue(plan.allWarnings.contains { warning in
+            if case .noWells = warning { return true } else { return false }
+        }, "the sheet has to name the drug that covers no wells")
+    }
+
+    /// A cleared or unusable value on a factor that is not a dilution is nothing at all.
+    /// Creating the marker for it would let a stray commit from an empty field — blurred
+    /// without typing, or a unit typed with no number — silently turn "Cell line" into a
+    /// drug and mark the document Edited.
+    func testANilStockOnAnUnmarkedFactorChangesNothing() {
+        let document = PlateDocument()
+        let editor = PlateEditor(document: document)
+        let undo = UndoManager()
+        editor.undoManager = undo
+        let factorID = document.layout.factors[0].id
+
+        editor.setFactorStock(factorID, stock: nil)
+        editor.setFactorStock(factorID, stock: StockConcentration(value: 0, unit: "mM"))
+
+        XCTAssertNil(document.layout.factors[0].dilution, "the factor must stay unmarked")
+        XCTAssertFalse(undo.canUndo, "and nothing was edited")
+    }
+
+    /// The prep window's numeric fields commit on losing focus whether or not anything
+    /// was typed, and nil → PrepSetup() is a real edit `mutate` cannot short-circuit —
+    /// so a no-op commit must not seed a setup into a document that has none.
+    func testANoOpPrepCommitDoesNotSeedASetup() {
+        let document = PlateDocument()
+        let editor = PlateEditor(document: document)
+        let undo = UndoManager()
+        editor.undoManager = undo
+
+        editor.updatePrep("Well Volume") { $0.wellVolume = 100 }   // the default, unchanged
+        XCTAssertNil(document.layout.prep, "an echo of the default is not a choice")
+        XCTAssertFalse(undo.canUndo)
+
+        editor.updatePrep("Well Volume") { $0.wellVolume = 50 }
+        XCTAssertEqual(document.layout.prep?.wellVolume, 50, "a real choice still seeds")
+    }
+
     /// Marking a factor is the opt-in now, so a document with none has no sheet — even
     /// when it has bench settings saved from a previous visit.
     func testNoDilutionFactorMeansNoPlan() {

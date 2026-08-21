@@ -179,6 +179,11 @@ struct Sidebar: View {
                     ) {
                         editor.setFactorStock(factor.id, stock: $0)
                     }
+                    // Identity per factor, or the field's @State unit survives a switch
+                    // in the sidebar: Drug A's "mM" would sit invisibly under Drug B's
+                    // empty field, and the next number typed there would take it — the
+                    // thousandfold-error class of bug the @State exists to prevent.
+                    .id(factor.id)
                     Spacer(minLength: 0)
                 }
 

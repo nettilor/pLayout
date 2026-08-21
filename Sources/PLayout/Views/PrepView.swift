@@ -261,8 +261,8 @@ struct PrepView: View {
                     .font(.headline)
                 Text(
                     plan == nil
-                        ? "Pick the factor that carries the doses."
-                        : "No wells on the plate carry a dose, so there is nothing to pipette."
+                        ? "Tick a factor above to say it is made by dilution."
+                        : "No wells carry that drug, so there is nothing to pipette."
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)

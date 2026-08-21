@@ -14,7 +14,7 @@ define.
 ```sh
 ./build.sh
 open "build/pLayout.app"
-swift test          # 262 tests
+swift test          # the full suite, 500+ tests
 ```
 
 Swift Package Manager, no third-party dependencies. Requires macOS 14 or later.
