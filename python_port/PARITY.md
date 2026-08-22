@@ -1,6 +1,6 @@
 # Feature parity — Mac pLayout ⇄ Python port
 
-Checked against Mac version **1.5**; last updated 2026-08-21 as 1.5 shipped. Port version
+Checked against Mac version **1.5.1**; last updated 2026-08-21 as 1.5.1 shipped (serial tubes became clones over equal well counts — a prep-sheet behaviour the port does not have yet anyway). Port version
 `1.4.0` (`playout.__version__`) — **the Windows app stays at 1.4 for now and lags the Mac
 by the whole 1.5 feature set**: every ⏳ row below is a 1.5 feature the port does not have
 yet. The v1.5 GitHub release therefore carries only the Mac DMG; Windows users stay on the
