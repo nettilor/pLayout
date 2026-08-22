@@ -66,6 +66,14 @@ final class DilutionPlanTests: XCTestCase {
 
     /// 10 mM stock · 100 µL well · 10 µL added (10×) · 3-fold from 10 µM · 24 wells each
     /// · +20 %. Asserted cell for cell.
+    ///
+    /// Every dose covers the same wells, so the tubes are **clones**: take 144, add 288,
+    /// make 432, at every step — the way a protocol book writes a serial dilution and
+    /// the way hands pipette one. 432 is the steady state of "its own need plus a third
+    /// of itself" (288 × r/(r−1)); only the last tube, which feeds nothing, is smaller,
+    /// and the tube above it simply keeps the difference as surplus rather than making
+    /// every take a different number. The tapered chain this replaced asked for a
+    /// different pipette setting per step to save a few µL of diluent.
     func testTheWorkedExampleIsExact() throws {
         let compound = try plan(layout())
         assertSerial(compound.method, fold: 3)
@@ -73,9 +81,9 @@ final class DilutionPlanTests: XCTestCase {
 
         let expected: [(name: String, working: Double, total: Double, source: Double,
                         diluent: Double, next: Double, toWells: Double)] = [
-            ("10",   100,  427, 4.3,   422.7, 139, 288),
-            ("3.33", 33.3, 416, 139,   277,   128, 288),
-            ("1.11", 11.1, 384, 128,   256,    96, 288),
+            ("10",   100,  432, 4.3,   427.7, 144, 288),
+            ("3.33", 33.3, 432, 144,   288,   144, 288),
+            ("1.11", 11.1, 432, 144,   288,    96, 336),
             ("0.37",  3.7, 288,  96,   192,     0, 288),
         ]
         for (index, want) in expected.enumerated() {
@@ -96,6 +104,42 @@ final class DilutionPlanTests: XCTestCase {
         XCTAssertEqual(vehicle.diluent ?? -1, 285.1, accuracy: 0.001)
     }
 
+    /// The complaint that forced the clone rule, pinned: an 8-step series over one well
+    /// per dose used to ask for 60, 60, 60, 59.3, 58, 53.3, 40 — a different pipette
+    /// setting per step, to save a few µL of diluent. Every dose covers the same wells,
+    /// so every step is "take X, add Y" and only the last tube is smaller.
+    func testAUniformSeriesIsPipettedTheSameWayAtEveryStep() throws {
+        let compound = try plan(layout(
+            doses: ["10", "3.33", "1.11", "0.37", "0.123", "0.0412", "0.0137", "0.00457"],
+            wells: 1, vehicleWells: 0
+        ))
+        let chain = compound.steps.filter { !$0.isVehicle }.dropFirst()   // from tube 2 on
+        let takes = Set(chain.dropLast().map(\.sourceVolume))
+        let diluents = Set(chain.dropLast().map(\.diluent))
+        XCTAssertEqual(takes.count, 1, "every middle step is the same take: \(takes)")
+        XCTAssertEqual(diluents.count, 1, "and the same diluent: \(diluents)")
+        XCTAssertLessThan(
+            chain.last!.total, chain.first!.total,
+            "only the last tube, which feeds nothing, is smaller"
+        )
+    }
+
+    /// The clone rule applies only when it is free. Doses covering different well counts
+    /// genuinely need different tubes, and forcing them uniform would size every tube
+    /// for the biggest — real waste, not a rounding of it.
+    func testUnequalWellCountsStillSizeEachTubeForItsOwnWells() throws {
+        var layout = self.layout(vehicleWells: 0)
+        // Move the bottom dose to four times the wells of the others.
+        let drug = layout.factors[0]
+        let bottom = try XCTUnwrap(drug.levels.first { $0.name == "0.37" })
+        for well in 300..<372 {
+            layout.plates[0].setLevelID(bottom.id, factor: drug.id, well: well)
+        }
+        let compound = try plan(layout)
+        let totals = Set(compound.steps.map(\.total))
+        XCTAssertGreaterThan(totals.count, 2, "the tubes must differ when their needs do")
+    }
+
     /// 10 µM out of a 10 mM stock is 0.1 % solvent in the well — the number a cell
     /// biologist already knows, and the cheapest check that the whole chain is right.
     func testSolventInTheWellIsTheDoseOverTheStock() throws {
@@ -110,7 +154,7 @@ final class DilutionPlanTests: XCTestCase {
 
     // MARK: - The accumulation
 
-    /// Tube 1 makes 427 µL, not the 288 µL its own wells need, because 139 µL of it goes
+    /// Tube 1 makes 432 µL, not the 288 µL its own wells need, because 144 µL of it goes
     /// into tube 2. Raising only the *last* tube's wells has to move the *first* tube.
     func testEachTubeHoldsItsWellsPlusTheTransferOut() throws {
         let compound = try plan(layout())
@@ -123,7 +167,7 @@ final class DilutionPlanTests: XCTestCase {
                 )
             }
         }
-        XCTAssertEqual(compound.steps[0].total, 427, accuracy: 0.001)
+        XCTAssertEqual(compound.steps[0].total, 432, accuracy: 0.001)
 
         // Only the bottom tube's well count changes.
         var bigger = layout()
@@ -340,9 +384,9 @@ final class DilutionPlanTests: XCTestCase {
 
     func testAMissingStockStillGivesTheVolumesToMake() throws {
         let compound = try plan(layout(stock: nil))
-        XCTAssertEqual(compound.steps[0].total, 427, accuracy: 0.001, "the totals are the value-add")
+        XCTAssertEqual(compound.steps[0].total, 432, accuracy: 0.001, "the totals are the value-add")
         XCTAssertNil(compound.steps[0].sourceVolume, "how much stock to take is unknowable")
-        XCTAssertEqual(compound.steps[1].sourceVolume ?? -1, 139, accuracy: 0.001,
+        XCTAssertEqual(compound.steps[1].sourceVolume ?? -1, 144, accuracy: 0.001,
                        "the rest of a serial chain never touches the stock")
         XCTAssertTrue(compound.warnings.contains(.noStock(compound: "Cpd1")))
     }
@@ -350,7 +394,7 @@ final class DilutionPlanTests: XCTestCase {
     func testAStockWeakerThanTheTopTubeIsAnError() throws {
         let compound = try plan(layout(stock: StockConcentration(value: 50, unit: "µM")))
         XCTAssertNil(compound.steps[0].sourceVolume)
-        XCTAssertEqual(compound.steps[1].sourceVolume ?? -1, 139, accuracy: 0.001,
+        XCTAssertEqual(compound.steps[1].sourceVolume ?? -1, 144, accuracy: 0.001,
                        "the rest of the chain is unaffected")
         XCTAssertTrue(compound.warnings.contains {
             if case .stockTooWeak = $0 { return true } else { return false }

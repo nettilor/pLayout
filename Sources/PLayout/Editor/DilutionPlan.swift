@@ -427,10 +427,29 @@ extension DilutionPlan {
             // totals are ceiled (making slightly too much is harmless) while transfers
             // are rounded to nearest (which keeps the concentration honest), and the
             // ceiled total is where the slack for that comes from.
+            //
+            // When every tube needs the same volume — the normal plate, one replicate
+            // count per dose — the tubes are made **clones**: the same take and the same
+            // diluent at every step, the way every protocol book writes a serial
+            // dilution and the way hands actually pipette one. That is the steady state
+            // of the recurrence (V = need + V/ratio); without the floor, the last
+            // tube's smallness rippled up the chain and the sheet asked for 59.3, then
+            // 58, then 53.3 µL of what should have been "take 60, seven times" — a
+            // different pipette setting per step, to save a few µL of diluent. Only the
+            // last tube, which feeds nothing, is smaller. When needs genuinely differ,
+            // the floor is absent and each tube is sized for its own wells as before.
+            let uniformNeed: Double? = Set(needs).count == 1 && n >= 2 && ratio > 1
+                ? needs[0] : nil
+            let steadyFloor = uniformNeed.map { pipetteCeiled($0 * ratio / (ratio - 1)) }
             totals[n - 1] = pipetteCeiled(needs[n - 1])
             for k in stride(from: n - 2, through: 0, by: -1) {
                 transfers[k + 1] = pipetteRounded(totals[k + 1] / ratio)
-                totals[k] = pipetteCeiled(needs[k] + transfers[k + 1])
+                // `max`, never a replacement: the floor may only add headroom, so the
+                // guarantee that a tube holds its wells plus the transfer out survives
+                // by construction.
+                totals[k] = max(
+                    pipetteCeiled(needs[k] + transfers[k + 1]), steadyFloor ?? 0
+                )
             }
         case .individual:
             for k in 0..<n { totals[k] = pipetteCeiled(needs[k]) }
