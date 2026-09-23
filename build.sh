@@ -4,13 +4,17 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# Ask SwiftPM where it put the product rather than assuming a path: the
+# multi-arch layout moved from .build/apple/Products to .build/out/Products
+# between toolchains, and a wrong path here made the release DMG fail silently.
 if [ "${1:-}" = "--universal" ]; then
     swift build -c release --arch arm64 --arch x86_64
-    BINARY=".build/apple/Products/Release/PLayout"
+    BIN_DIR="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)"
 else
     swift build -c release
-    BINARY=".build/release/PLayout"
+    BIN_DIR="$(swift build -c release --show-bin-path)"
 fi
+BINARY="$BIN_DIR/PLayout"
 
 APP_NAME="pLayout"
 EXEC_NAME="PLayout"
