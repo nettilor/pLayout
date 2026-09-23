@@ -378,15 +378,41 @@ final class OverviewRenderTests: XCTestCase {
         XCTAssertLessThan(colour.redComponent, 0.99, "the tile has to be visible against the plate")
     }
 
-    /// The counterweight: without Overview the same plate is flooded with the active
-    /// factor's colour, which is exactly what the dummy-grey-factor workaround existed
-    /// to defeat.
-    func testTheOtherModesStillColourTheWellByActiveFactor() throws {
-        let colour = try wellFill(editor(mode: .allFactors), mode: .allFactors)
+    /// All factors stands on the same neutral tile: the active factor's colour no
+    /// longer floods the well, where it drowned every other factor's rail. It sits on
+    /// the active line alone — a band behind it, which Overview does not draw, so the
+    /// one well carries far more of the Treatment red in All than in Overview.
+    func testAllFactorsKeepsTheWellNeutralAndColoursOnlyTheActiveLine() throws {
+        let tile = try wellFill(editor(mode: .allFactors), mode: .allFactors)
+        XCTAssertEqual(tile.redComponent, tile.greenComponent, accuracy: 0.02)
+        XCTAssertEqual(tile.greenComponent, tile.blueComponent, accuracy: 0.02)
+
+        let graded = try redPixels(editor(mode: .allFactors))
+        let overview = try redPixels(editor(mode: .overview))
+        XCTAssertGreaterThan(overview, 0, "the Treatment rail is red in both modes")
         XCTAssertGreaterThan(
-            colour.redComponent, colour.blueComponent + 0.2,
-            "expected the active factor's red, got \(colour)"
+            graded, overview * 3,
+            "expected a red band behind the active line, not only its rail (\(graded) vs \(overview))"
         )
+    }
+
+    /// How many pixels of the one well carry the Treatment red — its rail, and in All
+    /// factors the band behind the line as well.
+    private func redPixels(_ editor: PlateEditor) throws -> Int {
+        let (png, canvas) = try render(editor)
+        let rep = try XCTUnwrap(NSBitmapImageRep(data: png))
+        let geo = PlateGeometry(format: editor.format, bounds: canvas.bounds)
+        let cell = geo.cellRect(row: 0, col: 0)
+        let sx = CGFloat(rep.pixelsWide) / canvas.bounds.width
+        let sy = CGFloat(rep.pixelsHigh) / canvas.bounds.height
+        var count = 0
+        for y in Int(cell.minY * sy)..<Int(cell.maxY * sy) {
+            for x in Int(cell.minX * sx)..<Int(cell.maxX * sx) {
+                guard let colour = rep.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { continue }
+                if colour.redComponent > colour.blueComponent + 0.2 { count += 1 }
+            }
+        }
+        return count
     }
 
     func testOverviewRendersAtEveryStandardFormat() throws {

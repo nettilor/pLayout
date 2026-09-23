@@ -440,7 +440,6 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         let format = plate.format
         let mode = editor.layout.wellLabelMode
         let textStyle = Preferences.shared.wellTextStyle
-        let markerStyle = Preferences.shared.activeMarkerStyle
         // Overview has no factor being painted, so no factor colours the well. Read
         // from the mode rather than from `activeFactor` alone: that keeps the drawing
         // correct on its own terms, including when a test sets the mode directly.
@@ -576,7 +575,13 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
                 )
                 let shape = wellPath(in: bodyRect, round: editor.roundWells && stacked.isEmpty)
 
-                if let level, let color = NSColor(hex: level.colorHex) {
+                // A stacked well carries the active factor's colour on its own line — the
+                // band behind the label and the block beside it — so the well itself is
+                // the same neutral tile Overview uses. Flooding it with that colour
+                // drowned every other factor's block, which was the point of stacking.
+                // Only a well too small to stack still takes the colour whole: it has
+                // nothing else to show it with.
+                if stacked.isEmpty, let level, let color = NSColor(hex: level.colorHex) {
                     color.setFill()
                     shape.fill()
                     color.blended(withFraction: 0.25, of: .black)?.withAlphaComponent(0.55).setStroke()
@@ -589,7 +594,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
                         )
                     }
                 } else {
-                    (mode.isOverview ? neutralFill : emptyFill).setFill()
+                    (mode.isOverview || !stacked.isEmpty ? neutralFill : emptyFill).setFill()
                     shape.fill()
                     if let soloFactor,
                        let name = soloFactor
@@ -603,9 +608,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
                     drawFactorStack(
                         in: bodyRect, factors: stacked, plate: plate, index: index,
                         plan: plan, activeFactorID: editor.activeFactorID,
-                        onColour: level.flatMap { NSColor(hex: $0.colorHex) },
-                        reservedBottom: stripeHeight,
-                        style: textStyle, neutralInk: neutralInk, marker: markerStyle, fit: fit
+                        reservedBottom: stripeHeight, neutralInk: neutralInk, fit: fit
                     )
                 }
 
@@ -830,13 +833,22 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         Self.labelPlan(cell: cell, mode: mode, factorCount: factorCount)
     }
 
+    /// The rail that heads a stacked line — a block of the level's colour — with the
+    /// inset from the well's edge before it and the gap between it and the text. Every
+    /// line's rail is the same width, so the text starts at one x down the whole stack.
+    /// Wide enough to read as a swatch of the colour rather than a tick mark beside
+    /// the name: the colour is what the rail is for.
+    static func stackRail(bodyWidth: CGFloat) -> (width: CGFloat, inset: CGFloat, gap: CGFloat) {
+        let width = max(3.5, min(9, bodyWidth * 0.14))
+        return (width, max(2.5, bodyWidth * 0.055), max(2, width * 0.45))
+    }
+
     /// The room a stacked line's text gets inside a well body, past the inset, the
     /// colour rail and the gap after it. One formula, so the fit measured before the
     /// well loop and the drawing inside it cannot disagree about how much room there is.
     static func stackTextWidth(bodyWidth: CGFloat) -> CGFloat {
-        let rail = max(2.5, min(5.5, bodyWidth * 0.09))
-        let inset = max(2.5, bodyWidth * 0.055)
-        return bodyWidth - inset * 2 - rail * 1.45 - max(2, rail * 0.75)
+        let rail = stackRail(bodyWidth: bodyWidth)
+        return bodyWidth - rail.inset * 2 - rail.width - rail.gap
     }
 
     /// How much of a rect `drawFitted` really has for text, once its padding is off.
@@ -990,13 +1002,13 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         return lines.firstIndex { $0.id == activeFactorID }
     }
 
-    /// One text line per factor, in document order, each headed by a colour rail.
-    /// Slots for unassigned factors are reserved rather than collapsed, so line 2
-    /// always means the same factor in every well.
+    /// One text line per factor, in document order, each headed by a block of the
+    /// level's colour. Slots for unassigned factors are reserved rather than collapsed,
+    /// so line 2 always means the same factor in every well.
     private func drawFactorStack(
         in bodyRect: CGRect, factors: [Factor], plate: Plate, index: Int,
-        plan: LabelPlan, activeFactorID: UUID?, onColour: NSColor?, reservedBottom: CGFloat,
-        style: WellTextStyle, neutralInk: NSColor, marker: ActiveMarkerStyle, fit: CGFloat
+        plan: LabelPlan, activeFactorID: UUID?, reservedBottom: CGFloat,
+        neutralInk: NSColor, fit: CGFloat
     ) {
         let lineCount = min(plan.lineCount, factors.count)
         guard lineCount >= 1 else { return }
@@ -1005,22 +1017,12 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
             activeFactorID: activeFactorID, uniform: plan.uniform
         )
 
-        // Overview puts the text on a neutral tile with nothing behind it to fight
-        // with, and reading it is the whole job there, so it gets full strength.
-        let textColor = onColour?.labelInk(style)
-            ?? (plan.uniform ? neutralInk : neutralInk.withAlphaComponent(0.75))
-        // Deliberately wider than a hairline: the rail is the only colour a stacked
-        // well carries, and at 3pt it read as a tick mark rather than as the swatch
-        // that ties the well back to the condition list.
-        let railWidth = max(2.5, min(5.5, bodyRect.width * 0.09))
-        // The active line's rail is wider as well as walled, and every rail is
-        // left-aligned inside the wider one's slot, so the text still starts at one x
-        // down the whole stack. A rail that grew rightwards would ripple into the text
-        // and leave the column ragged.
-        let activeRailWidth = railWidth * 1.45
-        let inset = max(2.5, bodyRect.width * 0.055)
-        let textGap = max(2, railWidth * 0.75)
-        let textStart = bodyRect.minX + inset + activeRailWidth + textGap
+        // The stack sits on the neutral tile in every mode, so it takes the tile's ink
+        // at full strength: reading it is the whole job, and the only colour on a line
+        // is its rail — plus, for the factor being painted, the band behind it.
+        let textColor = neutralInk
+        let rail = Self.stackRail(bodyWidth: bodyRect.width)
+        let textStart = bodyRect.minX + rail.inset + rail.width + rail.gap
         // Centre the stack in whatever the stripe left behind.
         let usable = bodyRect.height - reservedBottom
         let stackHeight = plan.stackHeight(lines: lineCount, primary: primarySlot != nil)
@@ -1034,63 +1036,49 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
             let level = factor.id == activeFactorID
                 ? resolvedLevel(index: index, plate: plate, factor: factor)
                 : factor.level(id: plate.levelID(factor: factor.id, well: index))
+            let colour = level.flatMap { NSColor(hex: $0.colorHex) }
 
-            // A band behind the whole line, so what is being edited is legible from a
-            // glance at the plate rather than from comparing two type sizes. Drawn in
-            // the label colour, which means it lightens a dark well and darkens a pale
-            // one without having to know which it is on.
-            if isPrimary, height >= 8, bodyRect.width >= 24 {
+            // A band behind the whole active line, in that line's own colour: with the
+            // well no longer flooded, this is where it shows the value being painted.
+            // A tint rather than the solid colour, so the rail keeps its full colour
+            // against it and the ink stays legible on it. A well with no value for the
+            // active factor keeps a faint band in the ink instead, so the line a click
+            // would change still stands out from the others.
+            if isPrimary, height >= 8 {
                 let bleed = min(1.5, plan.gap * 0.6)
                 let band = CGRect(
                     x: bodyRect.minX + 1, y: y - bleed,
                     width: bodyRect.width - 2, height: height + bleed * 2
                 )
-                textColor.withAlphaComponent(0.15).setFill()
+                (colour?.withAlphaComponent(0.42) ?? textColor.withAlphaComponent(0.15)).setFill()
                 NSBezierPath(
                     roundedRect: band, xRadius: min(3, band.height / 3), yRadius: min(3, band.height / 3)
                 ).fill()
             }
 
-            let thisRail = isPrimary ? activeRailWidth : railWidth
+            // A block rather than a capsule — a swatch of the colour, not a tick mark —
+            // so the other factors' values can be read at a glance.
             let railRect = CGRect(
-                x: bodyRect.minX + inset, y: y + height * 0.14,
-                width: thisRail, height: height * 0.72
+                x: bodyRect.minX + rail.inset, y: y + height * 0.09,
+                width: rail.width, height: height * 0.82
             )
-            let radius = thisRail / 2
-            if let level, let colour = NSColor(hex: level.colorHex) {
-                let capsule = NSBezierPath(roundedRect: railRect, xRadius: radius, yRadius: radius)
-                // The well is already flooded with the active factor's colour — the fill
-                // and this rail come from the same level — so a rail in that colour is
-                // invisible no matter how thick a wall it is given: it reads as a hollow
-                // ring, the letter O in front of the label. Where the two coincide the
-                // rail becomes a solid contrasting marker instead. No colour is lost by
-                // that; the colour is the entire well.
-                // The active marker sits on a well already filled with its own colour, so
-                // it is drawn solid and unwalled whichever style is chosen. A wall was
-                // tried twice — matching the label, then contrasting with the fill — and
-                // both times the ring plus a differently coloured middle read as the
-                // letter **O** in front of the label at these sizes. Anything this small
-                // has to be one shape in one colour.
-                let isMarker = isPrimary && onColour?.hexString == colour.hexString
-                if isMarker {
-                    (marker == .deeperShade ? colour.contrastingShade : textColor).setFill()
-                    capsule.fill()
-                } else {
-                    colour.setFill()
-                    capsule.fill()
-                    // A rail whose colour is close to the fill would otherwise disappear.
-                    // Inset by half the width so a heavier stroke stays inside the capsule
-                    // instead of swelling it, and taken as a *fraction* of its own rail —
-                    // a flat value ate the colour core at small well sizes.
-                    let wall: CGFloat = isPrimary ? max(0.9, thisRail * 0.19) : 0.75
-                    textColor.withAlphaComponent(isPrimary ? 1 : 0.7).setStroke()
-                    let outline = NSBezierPath(
-                        roundedRect: railRect.insetBy(dx: wall / 2, dy: wall / 2),
-                        xRadius: radius, yRadius: radius
-                    )
-                    outline.lineWidth = wall
-                    outline.stroke()
-                }
+            let radius = min(2, rail.width * 0.3)
+            if let level, let colour {
+                colour.setFill()
+                NSBezierPath(roundedRect: railRect, xRadius: radius, yRadius: radius).fill()
+                // A wall in the ink keeps a pale rail from dissolving into the tile, and
+                // a heavier one on the active line pins it to its band. Inset by half
+                // the width so the stroke stays inside the rail instead of swelling it,
+                // and taken as a fraction of the rail's own width — a flat value ate
+                // the colour at small well sizes.
+                let wall: CGFloat = isPrimary ? max(0.9, rail.width * 0.12) : 0.75
+                textColor.withAlphaComponent(isPrimary ? 1 : 0.7).setStroke()
+                let outline = NSBezierPath(
+                    roundedRect: railRect.insetBy(dx: wall / 2, dy: wall / 2),
+                    xRadius: radius, yRadius: radius
+                )
+                outline.lineWidth = wall
+                outline.stroke()
 
                 let textRect = CGRect(
                     x: textStart, y: y,

@@ -83,13 +83,13 @@ glance rather than a search.
 | Overview | Every factor at one size on a plain well, nothing selected |
 
 In **All** the lines follow the order of the factor list — drag factors in
-the sidebar to reorder them — each headed by a small rail in that level's colour,
-with a key under the plate naming the order. The line for the factor you are
-currently painting is called out three ways — a shaded band across the row, a wider
-solid marker in place of its rail, and larger bold text — so every well says what a
-click would change; switching factors moves the emphasis. Its rail becomes a plain
-marker because in this mode the well is already flooded with that factor's colour,
-which would leave a coloured rail invisible against it. If the active factor did not
+the sidebar to reorder them — each headed by a block of that level's colour,
+with a key under the plate naming the order. The well itself stays a plain neutral
+tile, the same one Overview uses, so no factor's colour drowns the others'. The line
+for the factor you are currently painting is called out three ways — a band across
+the row tinted with its value's colour, a heavier outline on its block, and larger
+bold text — so every well says what a click would change; switching factors moves
+the emphasis. If the active factor did not
 fit as a line, no line is promoted rather than a different one being claimed. A
 factor with no value in a well keeps
 its slot, so line 2 means the same factor in every well and a blank reads as a blank
@@ -97,10 +97,10 @@ rather than a shifted line. Wells are drawn as rounded squares in this mode beca
 circles waste the width the text needs. Factors that do not fit at the current well
 size fall back to the colour strip along the bottom, so nothing is silently dropped.
 
-**Overview** (`⇧⌘O`) is the same stack with the design read rather than edited. The
-well takes no colour from any factor — every one is a plain neutral tile, so the only
-colour in the plate is the rails — and no line is treated as the headline, so all of
-them share one size and weight. Choosing it also deselects the factor you were
+**Overview** (`⇧⌘O`) is the same stack with the design read rather than edited. No
+line is treated as the headline — none carries a band, and all of them share one size
+and weight — so the only colour in the plate is the rails. Choosing it also deselects
+the factor you were
 painting: nothing is armed, clicking selects wells without changing them, and an edit
 says so rather than quietly doing nothing. Click any factor, press `⇧⌘O` again, or
 pick another setting to go back to exactly what you were doing.
