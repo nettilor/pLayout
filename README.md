@@ -87,8 +87,8 @@ the sidebar to reorder them — each headed by a block of that level's colour,
 with a key under the plate naming the order. The well itself stays a plain neutral
 tile, the same one Overview uses, so no factor's colour drowns the others'. The line
 for the factor you are currently painting is called out three ways — a band across
-the row tinted with its value's colour, a heavier outline on its block, and larger
-bold text — so every well says what a click would change; switching factors moves
+the row tinted with its value's colour, a larger block with a heavier outline, and
+larger bold text — so every well says what a click would change; switching factors moves
 the emphasis. If the active factor did not
 fit as a line, no line is promoted rather than a different one being claimed. A
 factor with no value in a well keeps

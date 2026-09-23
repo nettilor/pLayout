@@ -834,21 +834,31 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     }
 
     /// The rail that heads a stacked line — a block of the level's colour — with the
-    /// inset from the well's edge before it and the gap between it and the text. Every
-    /// line's rail is the same width, so the text starts at one x down the whole stack.
-    /// Wide enough to read as a swatch of the colour rather than a tick mark beside
-    /// the name: the colour is what the rail is for.
-    static func stackRail(bodyWidth: CGFloat) -> (width: CGFloat, inset: CGFloat, gap: CGFloat) {
+    /// inset from the well's edge before it and the gap between it and the text. Wide
+    /// enough to read as a swatch of the colour rather than a tick mark beside the
+    /// name: the colour is what the rail is for. `width` is a supporting line's; the
+    /// headline's rail grows with its taller line to keep the block's shape, and
+    /// `activeWidth` is the slot that leaves for it. Every rail is left-aligned in that
+    /// slot, so the text starts at one x down the whole stack.
+    static func stackRail(bodyWidth: CGFloat)
+        -> (width: CGFloat, activeWidth: CGFloat, inset: CGFloat, gap: CGFloat)
+    {
         let width = max(3.5, min(9, bodyWidth * 0.14))
-        return (width, max(2.5, bodyWidth * 0.055), max(2, width * 0.45))
+        return (width, width * activeRailScale, max(2.5, bodyWidth * 0.055), max(2, width * 0.45))
     }
 
+    /// The most a headline line is taller than a supporting one: the secondary tier is
+    /// 80% of the primary and never less, so the headline's rail — which scales with
+    /// its line — is never wider than this times a supporting rail.
+    static let activeRailScale: CGFloat = 1.25
+
     /// The room a stacked line's text gets inside a well body, past the inset, the
-    /// colour rail and the gap after it. One formula, so the fit measured before the
-    /// well loop and the drawing inside it cannot disagree about how much room there is.
+    /// headline's rail slot and the gap after it. One formula, so the fit measured
+    /// before the well loop and the drawing inside it cannot disagree about how much
+    /// room there is.
     static func stackTextWidth(bodyWidth: CGFloat) -> CGFloat {
         let rail = stackRail(bodyWidth: bodyWidth)
-        return bodyWidth - rail.inset * 2 - rail.width - rail.gap
+        return bodyWidth - rail.inset * 2 - rail.activeWidth - rail.gap
     }
 
     /// How much of a rect `drawFitted` really has for text, once its padding is off.
@@ -1022,7 +1032,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         // is its rail — plus, for the factor being painted, the band behind it.
         let textColor = neutralInk
         let rail = Self.stackRail(bodyWidth: bodyRect.width)
-        let textStart = bodyRect.minX + rail.inset + rail.width + rail.gap
+        let textStart = bodyRect.minX + rail.inset + rail.activeWidth + rail.gap
         // Centre the stack in whatever the stripe left behind.
         let usable = bodyRect.height - reservedBottom
         let stackHeight = plan.stackHeight(lines: lineCount, primary: primarySlot != nil)
@@ -1057,12 +1067,16 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
             }
 
             // A block rather than a capsule — a swatch of the colour, not a tick mark —
-            // so the other factors' values can be read at a glance.
+            // so the other factors' values can be read at a glance. It keeps one shape
+            // on every line: 82% of the line's height, and as wide as that makes it, so
+            // the headline's block is larger rather than stretched taller. It never
+            // outgrows `activeWidth`, the slot the text column was measured against.
+            let railWidth = rail.width * (height / plan.secondaryHeight)
             let railRect = CGRect(
                 x: bodyRect.minX + rail.inset, y: y + height * 0.09,
-                width: rail.width, height: height * 0.82
+                width: railWidth, height: height * 0.82
             )
-            let radius = min(2, rail.width * 0.3)
+            let radius = min(2.5, railWidth * 0.22)
             if let level, let colour {
                 colour.setFill()
                 NSBezierPath(roundedRect: railRect, xRadius: radius, yRadius: radius).fill()
@@ -1071,7 +1085,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
                 // the width so the stroke stays inside the rail instead of swelling it,
                 // and taken as a fraction of the rail's own width — a flat value ate
                 // the colour at small well sizes.
-                let wall: CGFloat = isPrimary ? max(0.9, rail.width * 0.12) : 0.75
+                let wall: CGFloat = isPrimary ? max(0.9, railWidth * 0.12) : 0.75
                 textColor.withAlphaComponent(isPrimary ? 1 : 0.7).setStroke()
                 let outline = NSBezierPath(
                     roundedRect: railRect.insetBy(dx: wall / 2, dy: wall / 2),
