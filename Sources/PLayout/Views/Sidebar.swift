@@ -57,6 +57,14 @@ struct Sidebar: View {
                             .font(.system(size: 9))
                             .foregroundStyle(.tertiary)
                     }
+                    // The flag is shown in every mode, so it can be found from the mode
+                    // it does not apply to; the row itself only greys out in Overview.
+                    if factor.hiddenInOverview == true {
+                        Image(systemName: "eye.slash")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.tertiary)
+                            .help("Hidden in Overview")
+                    }
                     if preferences.showFactorConditionCounts {
                         Text(factor.levels.isEmpty ? "—" : "\(factor.levels.count)")
                             .font(.caption)
@@ -65,6 +73,11 @@ struct Sidebar: View {
                     }
                 }
                 .padding(.vertical, 1)
+                // Greyed while Overview is on and leaving this factor out: the row says
+                // "not in this picture", and only when that is the picture being drawn.
+                // Opacity rather than a colour, so the keycap, name and count all dim
+                // together — and it leaves the tap and the context menu untouched.
+                .opacity(editor.isOverview && !editor.layout.isShownInOverview(factor.id) ? 0.4 : 1)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     // The row keeps exactly one tap gesture (see RowClickTracker), so
@@ -99,6 +112,13 @@ struct Sidebar: View {
                         Button(factor.kind == .numeric ? "Treat as Categorical" : "Treat as Numeric") {
                             editor.setFactorKind(factor.id, kind: factor.kind == .numeric ? .categorical : .numeric)
                         }
+                        // A menu toggle, so the item carries its own tick. It is a
+                        // property of the factor — saved with the document, undoable —
+                        // which is why it lives here rather than under the Overview picker.
+                        Toggle("Hide in Overview", isOn: Binding(
+                            get: { factor.hiddenInOverview == true },
+                            set: { editor.setFactorHiddenInOverview(factor.id, $0) }
+                        ))
                         Divider()
                         Button("Delete Factor", role: .destructive) { editor.deleteFactor(factor.id) }
                             .disabled(editor.layout.factors.count <= 1)
@@ -407,11 +427,15 @@ struct Sidebar: View {
             // what is in a well but not where a block starts and stops.
             if editor.layout.wellLabelMode.isOverview {
                 Toggle("Group identical wells", isOn: $editor.showOverviewGroups)
-                    .help("Draws a line round each run of wells that share the same conditions, so the plate reads as blocks.")
+                    .help("Draws a line round each run of wells that share the same conditions for the factors Overview shows, so the plate reads as blocks.")
                 if editor.showOverviewGroups {
+                    // Only the factors Overview is showing: a block drawn on a hidden
+                    // one would put a seam between two wells that look identical.
+                    let shown = editor.layout.overviewFactors
                     Picker("", selection: $editor.overviewGroupFactorID) {
-                        Text("All factors").tag(UUID?.none)
-                        ForEach(editor.layout.factors) { factor in
+                        Text(shown.count < editor.layout.factors.count ? "All shown factors" : "All factors")
+                            .tag(UUID?.none)
+                        ForEach(shown) { factor in
                             Text(factor.name).tag(UUID?.some(factor.id))
                         }
                     }
@@ -444,7 +468,7 @@ struct Sidebar: View {
                 ? "Add a second factor to see stacked labels."
                 : "One line per factor, in the order listed above. Any that do not fit drop to a colour strip. A key appears under the plate."
         case .overview:
-            return "Every factor at the same size on a plain well, with nothing selected — the whole design at a glance (⇧⌘O)."
+            return "Every factor at the same size on a plain well, with nothing selected — the whole design at a glance (⇧⌘O). Right-click a factor to hide it from Overview."
         case .none, .activeFactor:
             return nil
         }

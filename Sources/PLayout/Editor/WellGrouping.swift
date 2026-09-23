@@ -11,8 +11,10 @@ import Foundation
 /// block whichever way round the plate is drawn.
 enum WellGrouping {
 
-    /// What makes two wells "the same". Either every factor agrees, or one named
+    /// What makes two wells "the same". Either every factor given agrees, or one named
     /// factor does — the coarse view, for when the fine one boxes every well on its own.
+    /// "Every factor" means every factor in the list passed in: Overview passes the
+    /// factors it is showing, so a factor hidden from it never draws a seam.
     enum Basis: Equatable {
         case allFactors
         case factor(UUID)

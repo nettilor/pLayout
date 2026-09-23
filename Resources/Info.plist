@@ -11,6 +11,8 @@
 			<array>
 				<string>plate</string>
 			</array>
+			<key>CFBundleTypeIconFile</key>
+			<string>PlateDocument</string>
 			<key>CFBundleTypeName</key>
 			<string>Plate Layout</string>
 			<key>CFBundleTypeRole</key>
@@ -50,12 +52,22 @@
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>
+			<!-- Deliberately NOT public.json. A .plate file is JSON, but
+			     conforming to public.json pulls in public.text, and macOS's own
+			     TextThumbnailExtension then claims the type and renders the raw
+			     JSON as the file's thumbnail and spacebar preview — overriding
+			     the document icon at every Finder size that draws a preview.
+			     public.data + public.content keeps the icon. (Measured Aug 25
+			     2026; public.content on its own is harmless.) -->
 			<key>UTTypeConformsTo</key>
 			<array>
-				<string>public.json</string>
+				<string>public.data</string>
+				<string>public.content</string>
 			</array>
 			<key>UTTypeDescription</key>
 			<string>Plate Layout</string>
+			<key>UTTypeIconFile</key>
+			<string>PlateDocument</string>
 			<key>UTTypeIdentifier</key>
 			<string>com.nettilor.playout</string>
 			<key>UTTypeTagSpecification</key>

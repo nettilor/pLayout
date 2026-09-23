@@ -472,11 +472,16 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
 
         drawHeaders(geo: geo, selectedRows: selectedRows, selectedCols: selectedCols)
 
-        let plan = labelPlan(cell: geo.cell, mode: mode, factorCount: editor.layout.factors.count)
+        // Overview draws only the factors not hidden from it — the same list the block
+        // outlines are grouped on, so a hidden factor is absent from the picture entirely
+        // rather than lingering in the stripe, the key or a seam. Every other mode shows
+        // the lot: they have an active factor, and hiding that would make no sense.
+        let factors = mode.isOverview ? editor.layout.overviewFactors : editor.layout.factors
+        let plan = labelPlan(cell: geo.cell, mode: mode, factorCount: factors.count)
         // Factors shown as text lines; anything left over may fall back to the colour stripe.
         let stacked = plan.lineCount >= 2 && !(geo.cell * displayScale < 7)
-            ? Array(editor.layout.factors.prefix(plan.lineCount)) : []
-        let overflow = stacked.isEmpty ? [] : Array(editor.layout.factors.dropFirst(plan.lineCount))
+            ? Array(factors.prefix(plan.lineCount)) : []
+        let overflow = stacked.isEmpty ? [] : Array(factors.dropFirst(plan.lineCount))
 
         // Zoomed far out on the board, the labels and hairlines are mush on screen and
         // drawing them is most of the cost of a board full of dense plates. `displayScale`
@@ -487,11 +492,13 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         // A well too small to stack still has to say something in Overview, so factor 1
         // takes the well's text and the rest drop to the stripe — the same shape the
         // other modes take, only without a factor having been chosen.
-        let soloFactor = mode.isOverview && showSingleText ? editor.layout.factors.first : nil
+        let soloFactor = mode.isOverview && showSingleText ? factors.first : nil
 
         // Overview always shows the other factors — that is the whole mode — and the
         // toggle that would otherwise govern it is hidden while Overview is on.
-        var secondary = (editor.showSecondaryFactors || mode.isOverview) ? editor.secondaryFactors : []
+        var secondary = mode.isOverview
+            ? factors
+            : editor.showSecondaryFactors ? editor.secondaryFactors : []
         if let soloFactor { secondary.removeAll { $0.id == soloFactor.id } }
 
         // The stack is sized against the whole body, so the stripe only gets what the
@@ -628,8 +635,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         // image includes it is asked in the save panel, not decided here.
         if editor.drawsOverviewGroups, !exportMode || exportIncludesGroups {
             drawGroupOutlines(
-                geo: geo, plate: plate, factors: editor.layout.factors,
-                basis: editor.overviewGroupBasis
+                geo: geo, plate: plate, factors: factors, basis: editor.overviewGroupBasis
             )
         }
 

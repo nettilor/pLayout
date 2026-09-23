@@ -71,6 +71,8 @@ final class LayoutCompatibilityTests: XCTestCase {
         XCTAssertEqual(layout.wellLabelMode, .activeFactor, "missing field should fall back to the default")
         XCTAssertNil(layout.prep, "a document written before the prep sheet has no setup")
         XCTAssertNil(layout.factors[0].dilution, "and no factor is a dilution")
+        XCTAssertNil(layout.factors[0].hiddenInOverview, "and nothing is hidden from Overview")
+        XCTAssertEqual(layout.overviewFactors.count, 1)
     }
 
     /// The prep fields are Optional so that a document that never used them encodes
@@ -83,6 +85,20 @@ final class LayoutCompatibilityTests: XCTestCase {
         XCTAssertFalse(json.contains("\"prep\""), json)
         XCTAssertFalse(json.contains("\"stock\""), json)
         XCTAssertFalse(json.contains("\"dilution\""), json)
+        XCTAssertFalse(json.contains("\"hiddenInOverview\""), json)
+    }
+
+    /// Hidden is the only state written: shown is the absence of the key, so a file that
+    /// hid a factor and showed it again is byte-for-byte what it was.
+    func testAFactorHiddenFromOverviewRoundTrips() throws {
+        var layout = Layout.starter()
+        layout.factors[0].hiddenInOverview = true
+        let data = try JSONEncoder().encode(layout)
+        XCTAssertTrue(String(decoding: data, as: UTF8.self).contains("\"hiddenInOverview\":true"))
+
+        let back = try JSONDecoder().decode(Layout.self, from: data)
+        XCTAssertEqual(back.factors[0].hiddenInOverview, true)
+        XCTAssertFalse(back.factors[0].isShownInOverview)
     }
 
     func testAStockAndAPrepSetupRoundTrip() throws {

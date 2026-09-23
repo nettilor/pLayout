@@ -147,6 +147,108 @@ final class WellGroupingTests: XCTestCase {
         XCTAssertEqual(editor.overviewGroupBasis, .allFactors)
     }
 
+    // MARK: - Factors hidden from Overview
+
+    /// The list the canvas hands the grouping: what Overview shows, not everything.
+    private func overviewBlocks(_ basis: WellGrouping.Basis = .allFactors) -> [Int?] {
+        WellGrouping.blocks(plate: layout.plates[0], factors: layout.overviewFactors, basis: basis)
+    }
+
+    /// An XY imaging position numbers every well uniquely, so grouping on everything
+    /// boxes each well on its own. Hiding it from Overview takes it out of the grouping
+    /// as well as the picture: what you see is what has to match.
+    func testHidingAFactorTakesItOutOfTheGrouping() {
+        paint(condition, 0, rows: 0...1, cols: 0...1)
+        var xy = Factor(name: "XY")
+        xy.levels = (0..<4).map { Level(name: "XY0\($0 + 1)", colorHex: Palette.color(at: $0)) }
+        layout.factors.append(xy)
+        for (i, (row, col)) in [(0, 0), (0, 1), (1, 0), (1, 1)].enumerated() {
+            layout.plates[0].setLevelID(
+                xy.levels[i].id, factor: xy.id, well: format.index(row: row, col: col)
+            )
+        }
+
+        let fine = overviewBlocks()
+        XCTAssertNotNil(block(fine, 0, 0))
+        XCTAssertNotEqual(block(fine, 0, 0), block(fine, 0, 1), "every position is its own block")
+
+        layout.factors[1].hiddenInOverview = true
+        let coarse = overviewBlocks()
+        XCTAssertEqual(
+            block(coarse, 0, 0), block(coarse, 1, 1),
+            "with XY hidden the four wells are one condition"
+        )
+    }
+
+    func testTheShownFactorsKeepTheirOrderAndNeverComeUpEmpty() {
+        let dose = Factor(name: "Dose")
+        layout.factors.append(dose)
+        XCTAssertEqual(layout.overviewFactors.map(\.name), [condition.name, "Dose"])
+
+        layout.factors[0].hiddenInOverview = true
+        XCTAssertEqual(layout.overviewFactors.map(\.name), ["Dose"])
+        XCTAssertFalse(layout.isShownInOverview(condition.id))
+
+        // A delete can leave the only factor hidden; Overview shows it rather than nothing.
+        layout.removeFactor(dose.id)
+        XCTAssertEqual(layout.overviewFactors.map(\.name), [condition.name])
+        XCTAssertTrue(layout.isShownInOverview(condition.id), "the effective state, not the flag")
+        XCTAssertEqual(layout.factors[0].hiddenInOverview, true, "and the flag itself is left alone")
+    }
+
+    func testHidingTheGroupedFactorFallsBackToGroupingOnWhatIsShown() {
+        let document = PlateDocument()
+        let editor = PlateEditor(document: document)
+        editor.addFactor()
+        let second = document.layout.factors[1].id
+        editor.overviewGroupFactorID = second
+
+        editor.setFactorHiddenInOverview(second, true)
+        XCTAssertEqual(document.layout.factors[1].hiddenInOverview, true)
+        XCTAssertNil(
+            editor.overviewGroupFactorID,
+            "the blocks cannot be drawn on a factor the wells no longer show"
+        )
+        XCTAssertEqual(editor.overviewGroupBasis, .allFactors)
+    }
+
+    func testHidingIsOneUndoStepAndShowingLeavesNoTrace() {
+        let document = PlateDocument()
+        let editor = PlateEditor(document: document)
+        editor.addFactor()
+        let second = document.layout.factors[1].id
+        // Attached after setup, so the hide is its own undo group.
+        let undo = UndoManager()
+        editor.undoManager = undo
+
+        editor.setFactorHiddenInOverview(second, true)
+        XCTAssertEqual(document.layout.overviewFactors.count, 1)
+        XCTAssertEqual(undo.undoActionName, "Hide in Overview")
+
+        undo.undo()
+        XCTAssertEqual(document.layout.overviewFactors.count, 2, "undo shows it again")
+
+        undo.redo()
+        XCTAssertEqual(document.layout.overviewFactors.count, 1)
+        editor.setFactorHiddenInOverview(second, false)
+        XCTAssertNil(
+            document.layout.factors[1].hiddenInOverview,
+            "shown again is nil, not false, so the file is byte-for-byte what it was"
+        )
+    }
+
+    func testTheLastShownFactorStaysShown() {
+        let document = PlateDocument()
+        let editor = PlateEditor(document: document)
+        editor.addFactor()
+        let ids = document.layout.factors.map(\.id)
+
+        editor.setFactorHiddenInOverview(ids[0], true)
+        editor.setFactorHiddenInOverview(ids[1], true)
+        XCTAssertNil(document.layout.factors[1].hiddenInOverview, "Overview cannot be left with nothing to show")
+        XCTAssertFalse(editor.transientMessage.isEmpty, "and the refusal is said out loud")
+    }
+
     // MARK: - The outline itself
 
     /// One segment per cell edge, so a block's outline is its perimeter: a 2×3 block

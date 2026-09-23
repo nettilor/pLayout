@@ -111,9 +111,18 @@ designed as rather than as a field of stacked text. The line follows the run its
 so an L-shaped block gets an L, and the same condition in two corners of the plate
 gets two outlines rather than one rectangle swallowing everything between them. Wells
 with no values at all are left alone. A picker beside it chooses what has to match:
-**All factors**, or any single factor for the coarser view — useful when a factor like
-XY position makes every well unique. Colour and thickness are in Settings; exports ask
-whether to include the lines, and print takes the plate as shown.
+every factor Overview is showing, or any single one for the coarser view. Colour and
+thickness are in Settings; exports ask whether to include the lines, and print takes
+the plate as shown.
+
+A factor that only gets in the way there can be left out. An XY imaging position
+numbers every well uniquely, so under Overview it boxes each well on its own and
+spends a line on a number nobody reads at a glance: right-click it and choose **Hide
+in Overview**. The row greys out in the list while Overview is on (an eye-slash marks
+it in the other modes), and Overview stacks, keys and groups the plate exactly as if
+the factor were not there — which also gives the remaining lines more room. Every
+other mode, the hover readout and the exports still carry it. The flag is saved with
+the document, and Overview always keeps at least one factor showing.
 
 Both stacking modes supersede the *Show other factors* checkbox, which is therefore
 hidden while either is on — the stacked list already accounts for every factor. On a
@@ -554,6 +563,13 @@ Two invariants are worth knowing before changing the drawing code:
   cell above or to the left of it: emitting it twice darkens every internal boundary
   against the outer ones. `WellGroupingTests` pins the perimeter count across all four
   quarter turns.
+- **Overview draws and groups one list, `Layout.overviewFactors`.** The stack, the solo
+  label on tiny cells, the stripe, the line key and the block outlines all read the
+  factors not hidden from Overview, so a hidden factor is absent from the picture
+  rather than lingering in a seam; the other modes read every factor, since they have
+  an active one. The flag is an optional `Factor.hiddenInOverview`, nil when shown, so
+  untouched files encode byte-identically. `testAHiddenFactorDrawsAsIfItWereNotThere`
+  pins hidden == absent and the flag's silence outside Overview.
 - **The plate view's document keeps its unmagnified size.** Zoom is `NSScrollView`
   magnification, so if the document view tracked the clip view's *bounds* it would
   re-fit the plate smaller and cancel the zoom exactly out. `PlateScrollView.tile()`

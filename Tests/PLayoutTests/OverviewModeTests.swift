@@ -321,6 +321,56 @@ final class OverviewRenderTests: XCTestCase {
         return try XCTUnwrap(rep.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB))
     }
 
+    // MARK: - Factors hidden from Overview
+
+    /// Treatment and cell line on every well, plus an XY position that makes each well
+    /// unique — the factor there is every reason to hide. `present` leaves XY out of the
+    /// document altogether, for comparison against hiding it.
+    private func xyEditor(mode: WellLabelMode, hidden: Bool, present: Bool = true) -> PlateEditor {
+        let format = PlateFormat(rows: 2, cols: 3)
+        let document = PlateDocument()
+        var layout = Layout()
+        let treatment = Factor(name: "Treatment", levels: [Level(name: "Drug", colorHex: "#E4572E")])
+        let line = Factor(name: "Cell line", levels: [Level(name: "HeLa", colorHex: "#17BEBB")])
+        var xy = Factor(name: "XY", hiddenInOverview: hidden ? true : nil)
+        xy.levels = (0..<format.wellCount).map {
+            Level(name: "XY0\($0 + 1)", colorHex: Palette.color(at: $0))
+        }
+
+        var plate = Plate(name: "Plate 1", format: format)
+        for well in 0..<format.wellCount {
+            plate.setLevelID(treatment.levels[0].id, factor: treatment.id, well: well)
+            plate.setLevelID(line.levels[0].id, factor: line.id, well: well)
+            if present { plate.setLevelID(xy.levels[well].id, factor: xy.id, well: well) }
+        }
+        layout.factors = present ? [treatment, line, xy] : [treatment, line]
+        layout.plates = [plate]
+        document.layout = layout
+
+        let editor = PlateEditor(document: document)
+        editor.activePlateID = plate.id
+        editor.setActiveFactor(treatment.id)
+        editor.setWellLabelMode(mode)
+        editor.showOverviewGroups = true
+        editor.selection = nil
+        return editor
+    }
+
+    /// A hidden factor is absent from the picture, not merely dimmed: the plate draws
+    /// exactly as it would if the factor did not exist — same lines, same type size,
+    /// same key, same blocks. And it is Overview's alone — the graded stack still has it.
+    func testAHiddenFactorDrawsAsIfItWereNotThere() throws {
+        let hidden = try render(xyEditor(mode: .overview, hidden: true)).0
+        let absent = try render(xyEditor(mode: .overview, hidden: false, present: false)).0
+        let shown = try render(xyEditor(mode: .overview, hidden: false)).0
+        XCTAssertEqual(hidden, absent, "hidden should draw exactly as not-there")
+        XCTAssertNotEqual(hidden, shown, "and differently from shown, or nothing was hidden")
+
+        let gradedHidden = try render(xyEditor(mode: .allFactors, hidden: true)).0
+        let gradedShown = try render(xyEditor(mode: .allFactors, hidden: false)).0
+        XCTAssertEqual(gradedHidden, gradedShown, "the flag means nothing outside Overview")
+    }
+
     func testOverviewGivesEveryWellTheSameNeutralTile() throws {
         let colour = try wellFill(editor(mode: .overview), mode: .overview)
         XCTAssertEqual(colour.redComponent, colour.greenComponent, accuracy: 0.02)

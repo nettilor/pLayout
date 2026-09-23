@@ -67,9 +67,10 @@ final class PlateEditor: ObservableObject {
     /// Per window like the two display toggles beside it — this is how you are looking
     /// at the plate, not something about the plate.
     @Published var showOverviewGroups = false
-    /// What counts as "identical": nil is every factor at once, a factor id is that one
-    /// alone. Grouping on everything can box each well on its own — an XY position
-    /// factor makes every well unique — and one factor is the coarse view that fixes it.
+    /// What counts as "identical": nil is every factor Overview shows, a factor id is
+    /// that one alone — the coarse view. Never a factor hidden from Overview: a seam
+    /// between two wells that look the same would be a line with no visible reason,
+    /// so `reconcileTargets` drops the choice the moment its factor is hidden or gone.
     @Published var overviewGroupFactorID: UUID?
     /// Seeded from Preferences when the document opens; the sidebar toggle drives it
     /// afterwards, so changing the default never disturbs a window already up.
@@ -761,6 +762,22 @@ final class PlateEditor: ObservableObject {
         }
     }
 
+    /// Leaves a factor out of Overview — the stack, the line key and the grouping —
+    /// while every other mode, the hover readout and the exports still carry it. Refused
+    /// for the last factor still showing, as Overview with nothing in it is a blank
+    /// plate. Stored as nil when shown, so showing a factor again leaves no trace in
+    /// the file.
+    func setFactorHiddenInOverview(_ factorID: UUID, _ hidden: Bool) {
+        if hidden, layout.isShownInOverview(factorID), layout.overviewFactors.count == 1 {
+            flash("Overview needs at least one factor to show.")
+            return
+        }
+        edit(hidden ? "Hide in Overview" : "Show in Overview") { layout in
+            guard let i = layout.factorIndex(id: factorID) else { return }
+            layout.factors[i].hiddenInOverview = hidden ? true : nil
+        }
+    }
+
     /// Factor order is also the order of the stacked well labels, so this is a
     /// layout decision rather than cosmetic bookkeeping.
     func moveFactors(fromOffsets source: IndexSet, toOffset destination: Int) {
@@ -1067,9 +1084,10 @@ final class PlateEditor: ObservableObject {
            layout.factors.first(where: { $0.id == activeFactorID })?.level(id: spotlight) == nil {
             spotlightLevelID = nil
         }
-        // Grouping on a factor that has just been deleted would silently box nothing;
-        // fall back to grouping on everything, which is the setting's own default.
-        if let grouped = overviewGroupFactorID, !layout.factors.contains(where: { $0.id == grouped }) {
+        // Grouping on a factor that has just been deleted, or hidden from Overview,
+        // would silently box nothing — or box on something the well no longer shows.
+        // Fall back to grouping on every shown factor, which is the setting's default.
+        if let grouped = overviewGroupFactorID, !layout.isShownInOverview(grouped) {
             overviewGroupFactorID = nil
         }
         // Undo and redo can delete ⌘-selected rows out from under the sets; a set

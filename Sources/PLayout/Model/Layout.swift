@@ -96,10 +96,18 @@ struct Factor: Identifiable, Codable, Hashable {
     /// Set when this factor is a drug you dilute — see `Dilution`. nil for a cell line, a
     /// timepoint, and every factor in every document written before the prep sheet.
     var dilution: Dilution?
+    /// Left out of Overview: not stacked in the well, not in the line key, and not part
+    /// of what makes two wells "identical" there. For the bookkeeping factors — an XY
+    /// imaging position numbers every well uniquely, which in Overview boxes each well
+    /// on its own and spends a line on a number nobody reads at a glance. On the factor
+    /// rather than in a list on `Layout` so a deleted factor takes the flag with it, and
+    /// Optional so a document that never hid anything encodes byte-for-byte as before:
+    /// nil is shown, and showing a factor again writes nil, not false.
+    var hiddenInOverview: Bool?
 
     init(
         id: UUID = UUID(), name: String, kind: FactorKind = .categorical, unit: String = "",
-        levels: [Level] = [], dilution: Dilution? = nil
+        levels: [Level] = [], dilution: Dilution? = nil, hiddenInOverview: Bool? = nil
     ) {
         self.id = id
         self.name = name
@@ -107,6 +115,7 @@ struct Factor: Identifiable, Codable, Hashable {
         self.unit = unit
         self.levels = levels
         self.dilution = dilution
+        self.hiddenInOverview = hiddenInOverview
     }
 
     /// Hand-written now that `Factor` has gained a field — it was the last type in this
@@ -123,9 +132,12 @@ struct Factor: Identifiable, Codable, Hashable {
         unit = try container.decodeIfPresent(String.self, forKey: .unit) ?? ""
         levels = try container.decodeIfPresent([Level].self, forKey: .levels) ?? []
         dilution = try container.decodeIfPresent(Dilution.self, forKey: .dilution)
+        hiddenInOverview = try container.decodeIfPresent(Bool.self, forKey: .hiddenInOverview)
     }
 
     var displayName: String { unit.isEmpty ? name : "\(name) (\(unit))" }
+
+    var isShownInOverview: Bool { hiddenInOverview != true }
 
     func level(id: UUID?) -> Level? {
         guard let id else { return nil }
@@ -808,6 +820,21 @@ struct Layout: Codable, Hashable {
     func factorIndex(id: UUID?) -> Int? {
         guard let id else { return nil }
         return factors.firstIndex { $0.id == id }
+    }
+
+    /// The factors Overview draws and groups by, in document order. Never empty while
+    /// there are factors: hiding the last shown one is refused, but a delete can still
+    /// leave a document whose only factor is hidden, and that shows everything rather
+    /// than a plate of blank tiles.
+    var overviewFactors: [Factor] {
+        let shown = factors.filter(\.isShownInOverview)
+        return shown.isEmpty ? factors : shown
+    }
+
+    /// Whether Overview is actually drawing this factor — the effective state, which
+    /// differs from the factor's own flag only in the all-hidden fallback above.
+    func isShownInOverview(_ id: UUID) -> Bool {
+        overviewFactors.contains { $0.id == id }
     }
 
     /// Human-readable value of a factor at a well, or nil when unassigned.
