@@ -59,34 +59,6 @@ enum WellTextStyle: String, Codable, DisplayChoice {
     var neutralInk: NSColor { fixedInk ?? .labelColor }
 }
 
-/// How the marker on the active factor's line is filled.
-///
-/// It exists because that rail always *is* the well's own colour — both come from the
-/// factor being painted — so left alone it is invisible. Two ways out: ignore the
-/// colour and use the label's ink, or keep the colour and take it far darker.
-enum ActiveMarkerStyle: String, Codable, DisplayChoice {
-    case matchLabel
-    case deeperShade
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .matchLabel: return "Match the label"
-        case .deeperShade: return "Darker shade of the well"
-        }
-    }
-
-    var note: String {
-        switch self {
-        case .matchLabel:
-            return "A plain marker in the same colour as the text, so the active line reads the same way on every condition."
-        case .deeperShade:
-            return "Keeps the condition's own colour, taken far enough down to stand out against the well it sits on."
-        }
-    }
-}
-
 /// The shape a new document draws its wells in. Only the starting point — the sidebar
 /// keeps its own toggle, so a single layout can differ without changing the default.
 enum WellShape: String, Codable, DisplayChoice {
@@ -172,13 +144,6 @@ final class Preferences: ObservableObject {
         didSet {
             guard wellTextStyle != oldValue else { return }
             defaults.set(wellTextStyle.rawValue, forKey: Self.wellTextStyleKey)
-        }
-    }
-
-    @Published var activeMarkerStyle: ActiveMarkerStyle {
-        didSet {
-            guard activeMarkerStyle != oldValue else { return }
-            defaults.set(activeMarkerStyle.rawValue, forKey: Self.activeMarkerStyleKey)
         }
     }
 
@@ -387,7 +352,6 @@ final class Preferences: ObservableObject {
 
     private let defaults: UserDefaults
     private static let wellTextStyleKey = "wellTextStyle"
-    private static let activeMarkerStyleKey = "activeMarkerStyle"
     private static let activeBandOpacityKey = "activeBandOpacity"
     private static let wellShapeKey = "newDocumentWellShape"
     private static let newConditionColorsKey = "newConditionColors"
@@ -407,8 +371,6 @@ final class Preferences: ObservableObject {
         // by a newer build should fall back rather than refuse to launch.
         wellTextStyle = defaults.string(forKey: Self.wellTextStyleKey)
             .flatMap(WellTextStyle.init(rawValue:)) ?? .automatic
-        activeMarkerStyle = defaults.string(forKey: Self.activeMarkerStyleKey)
-            .flatMap(ActiveMarkerStyle.init(rawValue:)) ?? .matchLabel
         let storedOpacity = defaults.object(forKey: Self.activeBandOpacityKey) as? Double
             ?? Self.defaultActiveBandOpacity
         activeBandOpacity = min(
@@ -444,7 +406,6 @@ final class Preferences: ObservableObject {
 
     func resetToDefaults() {
         wellTextStyle = .automatic
-        activeMarkerStyle = .matchLabel
         activeBandOpacity = Self.defaultActiveBandOpacity
         newDocumentWellShape = .round
         newConditionColors = .perFactor
@@ -466,30 +427,5 @@ extension NSColor {
     /// resolve to the wrong one at every call site.
     func labelInk(_ style: WellTextStyle) -> NSColor {
         style.fixedInk ?? contrastingLabelColor
-    }
-
-    /// This colour pushed hard away from its own lightness, keeping its hue: the marker
-    /// for a condition, drawn on a well already filled with that condition's colour.
-    ///
-    /// The direction is chosen from the colour rather than fixed. Almost everything the
-    /// palette offers is light enough to go darker, but a dark custom colour has no room
-    /// below it and has to go the other way, or the marker vanishes into its own well.
-    /// Saturation rises either way, so the result deepens or brightens rather than
-    /// sliding towards grey or towards white.
-    ///
-    /// It goes further than the swatch grid's darkest step, which stops where a
-    /// near-black label would stop being readable — nothing is written on a marker, so
-    /// that floor does not apply here.
-    var contrastingShade: NSColor {
-        guard let c = usingColorSpace(.sRGB) else { return self }
-        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-        c.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
-        let goDarker = perceivedLuminance > 0.16
-        return NSColor(
-            hue: h,
-            saturation: min(1, s * (goDarker ? 1.2 : 0.85)),
-            brightness: goDarker ? max(0.20, b * 0.5) : min(1, max(b * 1.9, b + 0.4)),
-            alpha: 1
-        )
     }
 }

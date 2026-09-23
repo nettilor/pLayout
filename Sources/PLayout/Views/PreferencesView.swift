@@ -65,8 +65,6 @@ struct PreferencesView: View {
                 note(preferences.wellTextStyle.note)
             }
             section("Factor being painted") {
-                choice("Active marker", selection: $preferences.activeMarkerStyle)
-                note(preferences.activeMarkerStyle.note)
                 HStack(spacing: 10) {
                     Text("Band opacity")
                         .font(.callout)

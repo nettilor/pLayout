@@ -257,11 +257,6 @@ carry black text, so *Always black* is safe across the palette; only a nearly-bl
 colour picked from **Custom…** will defeat it. Overview's neutral tile has no colour of
 its own to contrast against, so under *Always white* the tile darkens instead.
 
-**Active marker** — the marker on the factor you are painting. It cannot simply be that
-condition's colour, because in **All** the well is already flooded with it. *Match the
-label* draws a plain marker in the text colour; *Darker shade of the well* keeps the
-condition's own colour taken far enough down to stand against it.
-
 **Band opacity** — how strongly the band behind the active factor's line, in **All**,
 is tinted with its value's colour. The default is a tint that leaves the block its full
 colour against it; at full strength the band is the colour itself and the block merges

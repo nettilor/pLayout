@@ -1,6 +1,6 @@
 # Feature parity — Mac pLayout ⇄ Python port
 
-Checked against Mac version **1.5.1**; last updated 2026-08-21 as 1.5.1 shipped (serial tubes became clones over equal well counts — a prep-sheet behaviour the port does not have yet anyway). Port version
+Checked against Mac version **1.5.2**; last updated 2026-09-23 as 1.5.2 shipped (All factors on the neutral tile, Band opacity, Hide in Overview, the `.plate` document icon — and the *Active marker* setting is gone on the Mac; see those rows). Port version
 `1.4.0` (`playout.__version__`) — **the Windows app stays at 1.4 for now and lags the Mac
 by the whole 1.5 feature set**: every ⏳ row below is a 1.5 feature the port does not have
 yet. The v1.5 GitHub release therefore carries only the Mac DMG; Windows users stay on the
@@ -39,8 +39,8 @@ Mac `ShortcutsCard`, the README table, the menu item **and this file** in the sa
 | Layout templates: Save as Template… / New from Template / Remove | | | ✅ | M3 | File menu |
 | Per-well and per-plate notes; corner mark; status bar; Note column in exports | ⌥⌘N | Ctrl+Alt+N | ✅ | M4 | |
 | Overview block outlines: "Group identical wells" + All factors / one factor picker | | | ⏳ | — | 1.5; runs of identical wells, not bounding boxes; walked in display space |
-| Hide a factor from Overview (right-click a factor → Hide in Overview): row greyed while Overview is on, `eye.slash` on the row in every mode; Overview stacks, keys and groups only the shown factors, and the grouping picker lists only those | | | ⏳ | — | after 1.5.1 (Aug 25 2026); `Factor.hiddenInOverview` is a new optional key written only as `true` — nil, not false, when shown, so untouched files stay byte-identical. The port's strict `Factor.from_json`/`to_json` will drop it on save, same as `dilution` |
-| All factors draws on Overview's neutral tile: no active-factor flood; the active line's band is tinted with its value's colour (alpha from the *Band opacity* setting, default 0.42, range 0.1–1; the no-value band is ink at `min(0.3, 0.36 × opacity)`), rails are colour blocks (rounded rects, 82% of the line's height and `max(3.5, min(9, body × 0.14))` wide on a supporting line, the headline's scaled with its line so the shape holds, radius `min(2.5, 0.22 × w)`) rather than capsules, and there is no solid marker | | | ⏳ | — | branch `all-factors-strips` (Sep 23 2026), not merged; the *Active marker* setting is inert under it |
+| Hide a factor from Overview (right-click a factor → Hide in Overview): row greyed while Overview is on, `eye.slash` on the row in every mode; Overview stacks, keys and groups only the shown factors, and the grouping picker lists only those | | | ⏳ | — | 1.5.2 (built Aug 25 2026); `Factor.hiddenInOverview` is a new optional key written only as `true` — nil, not false, when shown, so untouched files stay byte-identical. The port's strict `Factor.from_json`/`to_json` will drop it on save, same as `dilution` |
+| All factors draws on Overview's neutral tile: no active-factor flood; the active line's band is tinted with its value's colour (alpha from the *Band opacity* setting, default 0.42, range 0.1–1; the no-value band is ink at `min(0.3, 0.36 × opacity)`), rails are colour blocks (rounded rects, 82% of the line's height and `max(3.5, min(9, body × 0.14))` wide on a supporting line, the headline's scaled with its line so the shape holds, radius `min(2.5, 0.22 × w)`) rather than capsules, and there is no solid marker | | | ⏳ | — | 1.5.2. The Mac dropped the *Active marker* setting, `ActiveMarkerStyle` and `contrastingShade` with it: a marker only made sense on a well flooded with its own colour. The port's marker stays meaningful exactly as long as its All mode still floods — drop both together |
 | Unit field on every factor, not only numeric ones; clearable | | | ⏳ | — | 1.5; the model field already exists both sides |
 | Pipetting prep sheet: serial/individual dilutions, one series per drug factor, totals from the well counts | ⌥⌘P | Ctrl+Alt+P | ⏳ | — | 1.5; own window, not a dialog. **A factor *is* the drug**: its levels are the concentrations, `Factor.unit` is what they are in, and `Factor.dilution` (a new optional key holding an optional stock) marks it and carries the stock. `Layout.prep` holds only the bench numbers now — no factor ids. **The port's `Factor.from_json` requires exactly id/name/kind/unit/levels and `to_json` writes exactly those five, so opening and saving a 1.5 file in the port silently drops every stock and every dilution mark** — the file still opens on the Mac, the drugs just stop being drugs. Decode `dilution` leniently and write it back before the port touches a 1.5 file |
 | "Made by dilution" tick and stock on the factor, in the sidebar under its unit | | | ⏳ | — | 1.5; replaces the per-condition stock, which no longer exists |
@@ -74,7 +74,7 @@ Mac `ShortcutsCard`, the README table, the menu item **and this file** in the sa
 
 | Feature | Status | Milestone | Notes |
 |---|---|---|---|
-| Text colour, active marker, live preview | ✅ | M6 | |
+| Text colour, live preview | ✅ | M6 | the active marker left the Mac in 1.5.2 (nothing floods a well for it to sit on); the port keeps its own until its All mode follows |
 | Default well shape for new documents | ✅ | M6 | |
 | Empty-well background colour (Overview tiles, exports, print) | ✅ | M6 | |
 | Plate typeface and text size | ✅ | M6 | |
