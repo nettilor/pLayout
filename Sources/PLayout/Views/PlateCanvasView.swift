@@ -441,6 +441,10 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         let mode = editor.layout.wellLabelMode
         let textStyle = Preferences.shared.wellTextStyle
         let bandOpacity = CGFloat(Preferences.shared.activeBandOpacity)
+        let blockScale = (
+            width: CGFloat(Preferences.shared.stackBlockWidthScale),
+            height: CGFloat(Preferences.shared.stackBlockHeightScale)
+        )
         // Overview has no factor being painted, so no factor colours the well. Read
         // from the mode rather than from `activeFactor` alone: that keeps the drawing
         // correct on its own terms, including when a test sets the mode directly.
@@ -532,7 +536,8 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
                 plate: plate, factor: factor, soloFactor: soloFactor, stacked: stacked,
                 showsSingleText: showSingleText, wellFontSize: baseWellFontSize,
                 geo: geo, plan: plan, stripeHeight: stripeHeight,
-                activeFactorID: editor.activeFactorID, armedLevelID: editor.armedLevelID
+                activeFactorID: editor.activeFactorID, armedLevelID: editor.armedLevelID,
+                blockWidthScale: blockScale.width
               ))
             : 1
         let wellFontSize = baseWellFontSize * fit
@@ -610,7 +615,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
                         in: bodyRect, factors: stacked, plate: plate, index: index,
                         plan: plan, activeFactorID: editor.activeFactorID,
                         reservedBottom: stripeHeight, neutralInk: neutralInk,
-                        bandOpacity: bandOpacity, fit: fit
+                        bandOpacity: bandOpacity, fit: fit, blockScale: blockScale
                     )
                 }
 
@@ -842,12 +847,22 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     /// headline's rail grows with its taller line to keep the block's shape, and
     /// `activeWidth` is the slot that leaves for it. Every rail is left-aligned in that
     /// slot, so the text starts at one x down the whole stack.
-    static func stackRail(bodyWidth: CGFloat)
-        -> (width: CGFloat, activeWidth: CGFloat, inset: CGFloat, gap: CGFloat)
-    {
-        let width = max(3.5, min(9, bodyWidth * 0.14))
+    ///
+    /// `widthScale` is the length setting. It multiplies the width the well gives, but
+    /// past a share of the body it stops: a block that kept growing would eat the name
+    /// it heads, and on a dense plate the well has no room to lend. It can never make a
+    /// block shorter than the unscaled one that way, so a tiny well is left as it was.
+    /// Takes the shared preference by default, like `labelPlan`; tests pass their own.
+    static func stackRail(
+        bodyWidth: CGFloat, widthScale: CGFloat = CGFloat(Preferences.shared.stackBlockWidthScale)
+    ) -> (width: CGFloat, activeWidth: CGFloat, inset: CGFloat, gap: CGFloat) {
+        let base = max(3.5, min(9, bodyWidth * 0.14))
+        let width = min(base * widthScale, max(base, bodyWidth * 0.35))
         return (width, width * activeRailScale, max(2.5, bodyWidth * 0.055), max(2, width * 0.45))
     }
+
+    /// The share of a stacked line's height the block takes at the default setting.
+    static let stackBlockHeightShare: CGFloat = 0.82
 
     /// The most a headline line is taller than a supporting one: the secondary tier is
     /// 80% of the primary and never less, so the headline's rail — which scales with
@@ -858,8 +873,10 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     /// headline's rail slot and the gap after it. One formula, so the fit measured
     /// before the well loop and the drawing inside it cannot disagree about how much
     /// room there is.
-    static func stackTextWidth(bodyWidth: CGFloat) -> CGFloat {
-        let rail = stackRail(bodyWidth: bodyWidth)
+    static func stackTextWidth(
+        bodyWidth: CGFloat, widthScale: CGFloat = CGFloat(Preferences.shared.stackBlockWidthScale)
+    ) -> CGFloat {
+        let rail = stackRail(bodyWidth: bodyWidth, widthScale: widthScale)
         return bodyWidth - rail.inset * 2 - rail.activeWidth - rail.gap
     }
 
@@ -952,7 +969,8 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     private func plateLabels(
         plate: Plate, factor: Factor?, soloFactor: Factor?, stacked: [Factor],
         showsSingleText: Bool, wellFontSize: CGFloat, geo: PlateGeometry,
-        plan: LabelPlan, stripeHeight: CGFloat, activeFactorID: UUID?, armedLevelID: UUID?
+        plan: LabelPlan, stripeHeight: CGFloat, activeFactorID: UUID?, armedLevelID: UUID?,
+        blockWidthScale: CGFloat
     ) -> [FittedLabel] {
         // Every cell is identical, so the first one stands for all of them.
         let body = wellBody(
@@ -970,7 +988,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
             }
         }
         if !stacked.isEmpty {
-            let available = Self.stackTextWidth(bodyWidth: body.width)
+            let available = Self.stackTextWidth(bodyWidth: body.width, widthScale: blockWidthScale)
             for line in stacked {
                 // The factor being painted takes the headline tier, so it is measured
                 // at the size and weight it is actually drawn at.
@@ -1020,7 +1038,8 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     private func drawFactorStack(
         in bodyRect: CGRect, factors: [Factor], plate: Plate, index: Int,
         plan: LabelPlan, activeFactorID: UUID?, reservedBottom: CGFloat,
-        neutralInk: NSColor, bandOpacity: CGFloat, fit: CGFloat
+        neutralInk: NSColor, bandOpacity: CGFloat, fit: CGFloat,
+        blockScale: (width: CGFloat, height: CGFloat)
     ) {
         let lineCount = min(plan.lineCount, factors.count)
         guard lineCount >= 1 else { return }
@@ -1033,7 +1052,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         // at full strength: reading it is the whole job, and the only colour on a line
         // is its rail — plus, for the factor being painted, the band behind it.
         let textColor = neutralInk
-        let rail = Self.stackRail(bodyWidth: bodyRect.width)
+        let rail = Self.stackRail(bodyWidth: bodyRect.width, widthScale: blockScale.width)
         let textStart = bodyRect.minX + rail.inset + rail.activeWidth + rail.gap
         // Centre the stack in whatever the stripe left behind.
         let usable = bodyRect.height - reservedBottom
@@ -1073,15 +1092,19 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
 
             // A block rather than a capsule — a swatch of the colour, not a tick mark —
             // so the other factors' values can be read at a glance. It keeps one shape
-            // on every line: 82% of the line's height, and as wide as that makes it, so
-            // the headline's block is larger rather than stretched taller. It never
-            // outgrows `activeWidth`, the slot the text column was measured against.
+            // on every line: 82% of the line's height by default, and as wide as that
+            // makes it, so the headline's block is larger rather than stretched taller.
+            // It never outgrows `activeWidth`, the slot the text column was measured
+            // against. Length and height are each a setting on top of that, and the
+            // block stays centred on its line whatever height it is given.
             let railWidth = rail.width * (height / plan.secondaryHeight)
+            let railHeight = min(height, height * Self.stackBlockHeightShare * blockScale.height)
             let railRect = CGRect(
-                x: bodyRect.minX + rail.inset, y: y + height * 0.09,
-                width: railWidth, height: height * 0.82
+                x: bodyRect.minX + rail.inset, y: y + (height - railHeight) / 2,
+                width: railWidth, height: railHeight
             )
-            let radius = min(2.5, railWidth * 0.22)
+            // Off the shorter side: a long, low bar rounded by its length is a capsule.
+            let radius = min(2.5, min(railWidth, railHeight) * 0.22)
             if let level, let colour {
                 colour.setFill()
                 NSBezierPath(roundedRect: railRect, xRadius: radius, yRadius: radius).fill()
@@ -1090,7 +1113,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
                 // the width so the stroke stays inside the rail instead of swelling it,
                 // and taken as a fraction of the rail's own width — a flat value ate
                 // the colour at small well sizes.
-                let wall: CGFloat = isPrimary ? max(0.9, railWidth * 0.12) : 0.75
+                let wall: CGFloat = isPrimary ? max(0.9, min(railWidth, railHeight) * 0.12) : 0.75
                 textColor.withAlphaComponent(isPrimary ? 1 : 0.7).setStroke()
                 let outline = NSBezierPath(
                     roundedRect: railRect.insetBy(dx: wall / 2, dy: wall / 2),
@@ -1101,7 +1124,8 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
 
                 let textRect = CGRect(
                     x: textStart, y: y,
-                    width: Self.stackTextWidth(bodyWidth: bodyRect.width), height: height
+                    width: Self.stackTextWidth(bodyWidth: bodyRect.width, widthScale: blockScale.width),
+                    height: height
                 )
                 let size = (isPrimary ? plan.primarySize : plan.secondarySize) * fit
                 drawFitted(

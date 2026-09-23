@@ -111,9 +111,37 @@ final class TextFittingTests: XCTestCase {
     /// come from one formula. A well body has to leave room for the colour rail.
     func testAStackedLineGetsLessRoomThanTheWholeWellBody() {
         let body: CGFloat = 60
-        let stacked = PlateCanvasView.stackTextWidth(bodyWidth: body)
+        let stacked = PlateCanvasView.stackTextWidth(bodyWidth: body, widthScale: 1)
         XCTAssertLessThan(stacked, PlateCanvasView.fittedWidth(of: body, alignment: .center))
         XCTAssertGreaterThan(stacked, 0)
+    }
+
+    /// The block's length is a setting, and the name is measured against what the
+    /// block leaves — so a longer block means less room, through the one formula. On
+    /// a well too small to lend any, the setting is capped rather than obeyed: the
+    /// block never grows into the name, and never shrinks below what the well gave.
+    func testALongerBlockLeavesLessRoomForTheNameUntilTheWellRunsOut() {
+        let body: CGFloat = 60
+        let plain = PlateCanvasView.stackRail(bodyWidth: body, widthScale: 1)
+        let long = PlateCanvasView.stackRail(bodyWidth: body, widthScale: 2)
+        XCTAssertEqual(long.width, plain.width * 2, accuracy: 0.001)
+        XCTAssertLessThan(
+            PlateCanvasView.stackTextWidth(bodyWidth: body, widthScale: 2),
+            PlateCanvasView.stackTextWidth(bodyWidth: body, widthScale: 1)
+        )
+        XCTAssertGreaterThan(PlateCanvasView.stackTextWidth(bodyWidth: body, widthScale: 2), body * 0.4)
+
+        let tiny: CGFloat = 8
+        XCTAssertEqual(
+            PlateCanvasView.stackRail(bodyWidth: tiny, widthScale: 2).width,
+            PlateCanvasView.stackRail(bodyWidth: tiny, widthScale: 1).width,
+            "a well this small has no width to lend the block"
+        )
+        XCTAssertEqual(
+            PlateCanvasView.stackRail(bodyWidth: tiny, widthScale: 0.5).width,
+            PlateCanvasView.stackRail(bodyWidth: tiny, widthScale: 1).width * 0.5,
+            accuracy: 0.001, "shorter is always allowed"
+        )
     }
 
     // MARK: - Through the drawing

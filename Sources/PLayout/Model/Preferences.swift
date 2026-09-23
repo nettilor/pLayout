@@ -161,6 +161,31 @@ final class Preferences: ObservableObject {
     static let activeBandOpacityRange: ClosedRange<Double> = 0.1...1
     static let defaultActiveBandOpacity: Double = 0.42
 
+    /// How long the block of colour heading each stacked line is, as a multiplier on
+    /// the width the canvas computes from the well. A multiplier rather than a point
+    /// value for the same reason the type size is one: the block follows the well,
+    /// and the name beside it is measured against what the block leaves. Length and
+    /// height are separate settings on purpose — a bar and a tile are different
+    /// shapes, and one "size" could give only the same shape larger.
+    @Published var stackBlockWidthScale: Double {
+        didSet {
+            guard stackBlockWidthScale != oldValue else { return }
+            defaults.set(stackBlockWidthScale, forKey: Self.stackBlockWidthScaleKey)
+        }
+    }
+
+    /// How tall that block is, as a multiplier on its share of the line. At 1 it is
+    /// the 82% of the line it has always been; the top of the range is the whole line.
+    @Published var stackBlockHeightScale: Double {
+        didSet {
+            guard stackBlockHeightScale != oldValue else { return }
+            defaults.set(stackBlockHeightScale, forKey: Self.stackBlockHeightScaleKey)
+        }
+    }
+
+    static let stackBlockWidthScaleRange: ClosedRange<Double> = 0.5...2
+    static let stackBlockHeightScaleRange: ClosedRange<Double> = 0.4...1.2
+
     /// Only read when a document opens: the sidebar toggle is the live control, and a
     /// preference that reached back into open windows would fight with it.
     @Published var newDocumentWellShape: WellShape {
@@ -353,6 +378,8 @@ final class Preferences: ObservableObject {
     private let defaults: UserDefaults
     private static let wellTextStyleKey = "wellTextStyle"
     private static let activeBandOpacityKey = "activeBandOpacity"
+    private static let stackBlockWidthScaleKey = "stackBlockWidthScale"
+    private static let stackBlockHeightScaleKey = "stackBlockHeightScale"
     private static let wellShapeKey = "newDocumentWellShape"
     private static let newConditionColorsKey = "newConditionColors"
     private static let emptyWellColorKey = "emptyWellColorHex"
@@ -376,6 +403,14 @@ final class Preferences: ObservableObject {
         activeBandOpacity = min(
             max(storedOpacity, Self.activeBandOpacityRange.lowerBound),
             Self.activeBandOpacityRange.upperBound
+        )
+        stackBlockWidthScale = Self.clamped(
+            defaults.object(forKey: Self.stackBlockWidthScaleKey) as? Double ?? 1,
+            to: Self.stackBlockWidthScaleRange
+        )
+        stackBlockHeightScale = Self.clamped(
+            defaults.object(forKey: Self.stackBlockHeightScaleKey) as? Double ?? 1,
+            to: Self.stackBlockHeightScaleRange
         )
         newDocumentWellShape = defaults.string(forKey: Self.wellShapeKey)
             .flatMap(WellShape.init(rawValue:)) ?? .round
@@ -404,9 +439,17 @@ final class Preferences: ObservableObject {
         checkForUpdatesAutomatically = defaults.object(forKey: Self.checkForUpdatesKey) as? Bool ?? true
     }
 
+    /// Clamped on load, like every slider value here: a stray number in the store
+    /// should land at the end of the range, not off the plate.
+    private static func clamped(_ value: Double, to range: ClosedRange<Double>) -> Double {
+        min(max(value, range.lowerBound), range.upperBound)
+    }
+
     func resetToDefaults() {
         wellTextStyle = .automatic
         activeBandOpacity = Self.defaultActiveBandOpacity
+        stackBlockWidthScale = 1
+        stackBlockHeightScale = 1
         newDocumentWellShape = .round
         newConditionColors = .perFactor
         emptyWellColorHex = nil

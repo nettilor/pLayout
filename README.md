@@ -262,6 +262,12 @@ is tinted with its value's colour. The default is a tint that leaves the block i
 colour against it; at full strength the band is the colour itself and the block merges
 with it.
 
+**Colour blocks** — the length and the height of the block of colour that heads each
+line in **All** and **Overview**, each as a percentage of what the plate computes for the
+well. They are two settings rather than one size so that a low bar and a tall tile are
+both reachable, not only the same shape larger. A longer block leaves less room for the
+name beside it, and on a dense plate it stops growing before it can eat the name.
+
 **Well shape** — whether a new document starts with round or square wells. Only the
 starting point: the sidebar keeps its own *Round wells* checkbox, so one layout can
 differ without changing the default, and changing the default leaves open windows

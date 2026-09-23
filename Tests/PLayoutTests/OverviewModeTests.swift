@@ -410,6 +410,33 @@ final class OverviewRenderTests: XCTestCase {
         XCTAssertGreaterThan(solid, faint * 3, "\(solid) vs \(faint): the setting did not reach the band")
     }
 
+    /// The block's length and height are settings, and each has to reach the canvas
+    /// on its own. Overview draws no band, so the Treatment red there is the block
+    /// alone: twice as long is about twice the red, and a low bar is well under the
+    /// default — while the other dimension, left alone, does not move.
+    func testTheBlockSizeSettingsReachThePlate() throws {
+        let savedWidth = Preferences.shared.stackBlockWidthScale
+        let savedHeight = Preferences.shared.stackBlockHeightScale
+        defer {
+            Preferences.shared.stackBlockWidthScale = savedWidth
+            Preferences.shared.stackBlockHeightScale = savedHeight
+        }
+
+        Preferences.shared.stackBlockWidthScale = 1
+        Preferences.shared.stackBlockHeightScale = 1
+        let plain = try redPixels(editor(mode: .overview))
+        XCTAssertGreaterThan(plain, 0)
+
+        Preferences.shared.stackBlockWidthScale = 2
+        let long = try redPixels(editor(mode: .overview))
+        XCTAssertGreaterThan(long, Int(Double(plain) * 1.6), "\(long) vs \(plain): length did not reach the block")
+
+        Preferences.shared.stackBlockWidthScale = 1
+        Preferences.shared.stackBlockHeightScale = 0.4
+        let low = try redPixels(editor(mode: .overview))
+        XCTAssertLessThan(low, Int(Double(plain) * 0.7), "\(low) vs \(plain): height did not reach the block")
+    }
+
     /// How many pixels of the one well carry the Treatment red — its rail, and in All
     /// factors the band behind the line as well.
     private func redPixels(_ editor: PlateEditor) throws -> Int {

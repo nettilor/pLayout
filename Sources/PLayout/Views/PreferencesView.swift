@@ -38,6 +38,8 @@ struct PreferencesView: View {
                     WellPreview(
                         textStyle: preferences.wellTextStyle,
                         bandOpacity: preferences.activeBandOpacity,
+                        blockWidthScale: preferences.stackBlockWidthScale,
+                        blockHeightScale: preferences.stackBlockHeightScale,
                         customEmpty: preferences.customEmptyWellColor,
                         labelFont: preferences.canvasFont(
                             ofSize: 11 * CGFloat(preferences.canvasFontScale), weight: .semibold
@@ -55,7 +57,9 @@ struct PreferencesView: View {
             }
             .padding(12)
         }
-        .frame(width: 460, height: 660)
+        // Fixed, and set by the tallest tab (Wells): 660 fitted it until the Colour
+        // blocks section arrived, which clipped Well shape at the bottom — measured.
+        .frame(width: 460, height: 780)
     }
 
     private var wellsTab: some View {
@@ -79,6 +83,17 @@ struct PreferencesView: View {
                         .frame(width: 44, alignment: .trailing)
                 }
                 note("How strongly the band behind the active factor's line, in All, is tinted with its value's colour. At full strength the block merges with its band.")
+            }
+            section("Colour blocks") {
+                percentSlider(
+                    "Length", value: $preferences.stackBlockWidthScale,
+                    in: Preferences.stackBlockWidthScaleRange
+                )
+                percentSlider(
+                    "Height", value: $preferences.stackBlockHeightScale,
+                    in: Preferences.stackBlockHeightScaleRange
+                )
+                note("The block of colour that heads each line in All and Overview. Both follow the well, so these scale what the plate computes: a longer block leaves less room for the name beside it, and on a dense plate it stops growing before it can.")
             }
             section("New documents") {
                 choice("Well shape", selection: $preferences.newDocumentWellShape)
@@ -310,6 +325,24 @@ struct PreferencesView: View {
         }
     }
 
+    /// A labelled slider over a multiplier, read out as a percentage — the same
+    /// shape the text-size and band-opacity rows use, so the tabs read as one.
+    private func percentSlider(
+        _ title: String, value: Binding<Double>, in range: ClosedRange<Double>
+    ) -> some View {
+        HStack(spacing: 10) {
+            Text(title)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .frame(width: 44, alignment: .leading)
+            Slider(value: value, in: range, step: 0.05)
+            Text("\(Int((value.wrappedValue * 100).rounded())) %")
+                .font(.callout.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 44, alignment: .trailing)
+        }
+    }
+
     private func note(_ text: String) -> some View {
         Text(text)
             .font(.caption)
@@ -348,6 +381,8 @@ private struct BlockOutlinePreview: View {
 private struct WellPreview: View {
     let textStyle: WellTextStyle
     let bandOpacity: Double
+    let blockWidthScale: Double
+    let blockHeightScale: Double
     let customEmpty: NSColor?
     let labelFont: NSFont
 
@@ -379,15 +414,25 @@ private struct WellPreview: View {
         }
     }
 
+    /// The block at the plate's own proportions, scaled by the two settings so the
+    /// sliders show their effect here. Capped at the line the way the canvas caps it,
+    /// so the tallest setting fills the row rather than spilling out of it.
+    private var block: CGSize {
+        CGSize(
+            width: 9 * blockWidthScale,
+            height: min(15, 12 * blockHeightScale)
+        )
+    }
+
     private func well(colour: NSColor, band: Bool, name: String) -> some View {
         HStack(spacing: 4) {
-            RoundedRectangle(cornerRadius: 2)
+            RoundedRectangle(cornerRadius: min(2, min(block.width, block.height) * 0.22))
                 .fill(Color(nsColor: colour))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 2)
+                    RoundedRectangle(cornerRadius: min(2, min(block.width, block.height) * 0.22))
                         .strokeBorder(Color(nsColor: ink.withAlphaComponent(band ? 1 : 0.7)), lineWidth: band ? 1 : 0.75)
                 )
-                .frame(width: 9, height: 12)
+                .frame(width: block.width, height: block.height)
             Text(name)
                 .font(Font(labelFont))
                 .lineLimit(1)

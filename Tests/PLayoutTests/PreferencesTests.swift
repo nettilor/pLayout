@@ -26,6 +26,8 @@ final class PreferencesTests: XCTestCase {
         let preferences = Preferences(defaults: defaults)
         XCTAssertEqual(preferences.wellTextStyle, .automatic)
         XCTAssertEqual(preferences.activeBandOpacity, 0.42)
+        XCTAssertEqual(preferences.stackBlockWidthScale, 1)
+        XCTAssertEqual(preferences.stackBlockHeightScale, 1)
         XCTAssertEqual(preferences.newDocumentWellShape, .round)
         XCTAssertEqual(preferences.newConditionColors, .perFactor)
         XCTAssertFalse(preferences.showFactorConditionCounts)
@@ -337,6 +339,34 @@ final class PreferencesTests: XCTestCase {
         preferences.resetToDefaults()
         XCTAssertEqual(preferences.activeBandOpacity, 0.42)
         XCTAssertEqual(Preferences(defaults: defaults).activeBandOpacity, 0.42)
+    }
+
+    /// The block's length and height are two settings, not one size: a bar and a tile
+    /// are different shapes. Each is a multiplier clamped to its own range on load, so
+    /// a stray value in the store lands at the end of the slider rather than off the
+    /// plate — a length of 50 would leave no room for a name at all.
+    func testColourBlockSizesRememberClampAndReset() {
+        let preferences = Preferences(defaults: defaults)
+        preferences.stackBlockWidthScale = 1.6
+        preferences.stackBlockHeightScale = 0.5
+        let reopened = Preferences(defaults: defaults)
+        XCTAssertEqual(reopened.stackBlockWidthScale, 1.6)
+        XCTAssertEqual(reopened.stackBlockHeightScale, 0.5)
+
+        defaults.set(50.0, forKey: "stackBlockWidthScale")
+        defaults.set(0.0, forKey: "stackBlockHeightScale")
+        XCTAssertEqual(Preferences(defaults: defaults).stackBlockWidthScale, 2, "clamped on load")
+        XCTAssertEqual(Preferences(defaults: defaults).stackBlockHeightScale, 0.4, "never vanishes")
+        defaults.set(0.0, forKey: "stackBlockWidthScale")
+        defaults.set(9.0, forKey: "stackBlockHeightScale")
+        XCTAssertEqual(Preferences(defaults: defaults).stackBlockWidthScale, 0.5)
+        XCTAssertEqual(Preferences(defaults: defaults).stackBlockHeightScale, 1.2, "never taller than its line")
+
+        preferences.resetToDefaults()
+        XCTAssertEqual(preferences.stackBlockWidthScale, 1)
+        XCTAssertEqual(preferences.stackBlockHeightScale, 1)
+        XCTAssertEqual(Preferences(defaults: defaults).stackBlockWidthScale, 1)
+        XCTAssertEqual(Preferences(defaults: defaults).stackBlockHeightScale, 1)
     }
 
     // MARK: - Plate text
