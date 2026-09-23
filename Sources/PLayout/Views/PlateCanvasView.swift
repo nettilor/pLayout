@@ -440,6 +440,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
         let format = plate.format
         let mode = editor.layout.wellLabelMode
         let textStyle = Preferences.shared.wellTextStyle
+        let bandOpacity = CGFloat(Preferences.shared.activeBandOpacity)
         // Overview has no factor being painted, so no factor colours the well. Read
         // from the mode rather than from `activeFactor` alone: that keeps the drawing
         // correct on its own terms, including when a test sets the mode directly.
@@ -608,7 +609,8 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
                     drawFactorStack(
                         in: bodyRect, factors: stacked, plate: plate, index: index,
                         plan: plan, activeFactorID: editor.activeFactorID,
-                        reservedBottom: stripeHeight, neutralInk: neutralInk, fit: fit
+                        reservedBottom: stripeHeight, neutralInk: neutralInk,
+                        bandOpacity: bandOpacity, fit: fit
                     )
                 }
 
@@ -1018,7 +1020,7 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     private func drawFactorStack(
         in bodyRect: CGRect, factors: [Factor], plate: Plate, index: Int,
         plan: LabelPlan, activeFactorID: UUID?, reservedBottom: CGFloat,
-        neutralInk: NSColor, fit: CGFloat
+        neutralInk: NSColor, bandOpacity: CGFloat, fit: CGFloat
     ) {
         let lineCount = min(plan.lineCount, factors.count)
         guard lineCount >= 1 else { return }
@@ -1050,17 +1052,20 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
 
             // A band behind the whole active line, in that line's own colour: with the
             // well no longer flooded, this is where it shows the value being painted.
-            // A tint rather than the solid colour, so the rail keeps its full colour
-            // against it and the ink stays legible on it. A well with no value for the
-            // active factor keeps a faint band in the ink instead, so the line a click
-            // would change still stands out from the others.
+            // A tint by default rather than the solid colour, so the rail keeps its
+            // full colour against it and the ink stays legible on it; how strong is a
+            // setting. A well with no value for the active factor keeps a faint band
+            // in the ink instead — scaled with the same setting, so it can never be
+            // the louder of the two — and the line a click would change still stands
+            // out from the others.
             if isPrimary, height >= 8 {
                 let bleed = min(1.5, plan.gap * 0.6)
                 let band = CGRect(
                     x: bodyRect.minX + 1, y: y - bleed,
                     width: bodyRect.width - 2, height: height + bleed * 2
                 )
-                (colour?.withAlphaComponent(0.42) ?? textColor.withAlphaComponent(0.15)).setFill()
+                (colour?.withAlphaComponent(bandOpacity)
+                    ?? textColor.withAlphaComponent(min(0.3, bandOpacity * 0.36))).setFill()
                 NSBezierPath(
                     roundedRect: band, xRadius: min(3, band.height / 3), yRadius: min(3, band.height / 3)
                 ).fill()

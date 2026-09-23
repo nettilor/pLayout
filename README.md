@@ -262,6 +262,11 @@ condition's colour, because in **All** the well is already flooded with it. *Mat
 label* draws a plain marker in the text colour; *Darker shade of the well* keeps the
 condition's own colour taken far enough down to stand against it.
 
+**Band opacity** — how strongly the band behind the active factor's line, in **All**,
+is tinted with its value's colour. The default is a tint that leaves the block its full
+colour against it; at full strength the band is the colour itself and the block merges
+with it.
+
 **Well shape** — whether a new document starts with round or square wells. Only the
 starting point: the sidebar keeps its own *Round wells* checkbox, so one layout can
 differ without changing the default, and changing the default leaves open windows

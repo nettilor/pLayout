@@ -182,6 +182,20 @@ final class Preferences: ObservableObject {
         }
     }
 
+    /// How strongly the band behind the active factor's line is tinted with its
+    /// value's colour in All factors. An alpha over the neutral tile: at 1 the band
+    /// is the colour itself and the block on it can only be told apart by its wall;
+    /// the default is a tint that leaves the block its full colour and the ink legible.
+    @Published var activeBandOpacity: Double {
+        didSet {
+            guard activeBandOpacity != oldValue else { return }
+            defaults.set(activeBandOpacity, forKey: Self.activeBandOpacityKey)
+        }
+    }
+
+    static let activeBandOpacityRange: ClosedRange<Double> = 0.1...1
+    static let defaultActiveBandOpacity: Double = 0.42
+
     /// Only read when a document opens: the sidebar toggle is the live control, and a
     /// preference that reached back into open windows would fight with it.
     @Published var newDocumentWellShape: WellShape {
@@ -374,6 +388,7 @@ final class Preferences: ObservableObject {
     private let defaults: UserDefaults
     private static let wellTextStyleKey = "wellTextStyle"
     private static let activeMarkerStyleKey = "activeMarkerStyle"
+    private static let activeBandOpacityKey = "activeBandOpacity"
     private static let wellShapeKey = "newDocumentWellShape"
     private static let newConditionColorsKey = "newConditionColors"
     private static let emptyWellColorKey = "emptyWellColorHex"
@@ -394,6 +409,12 @@ final class Preferences: ObservableObject {
             .flatMap(WellTextStyle.init(rawValue:)) ?? .automatic
         activeMarkerStyle = defaults.string(forKey: Self.activeMarkerStyleKey)
             .flatMap(ActiveMarkerStyle.init(rawValue:)) ?? .matchLabel
+        let storedOpacity = defaults.object(forKey: Self.activeBandOpacityKey) as? Double
+            ?? Self.defaultActiveBandOpacity
+        activeBandOpacity = min(
+            max(storedOpacity, Self.activeBandOpacityRange.lowerBound),
+            Self.activeBandOpacityRange.upperBound
+        )
         newDocumentWellShape = defaults.string(forKey: Self.wellShapeKey)
             .flatMap(WellShape.init(rawValue:)) ?? .round
         newConditionColors = defaults.string(forKey: Self.newConditionColorsKey)
@@ -424,6 +445,7 @@ final class Preferences: ObservableObject {
     func resetToDefaults() {
         wellTextStyle = .automatic
         activeMarkerStyle = .matchLabel
+        activeBandOpacity = Self.defaultActiveBandOpacity
         newDocumentWellShape = .round
         newConditionColors = .perFactor
         emptyWellColorHex = nil

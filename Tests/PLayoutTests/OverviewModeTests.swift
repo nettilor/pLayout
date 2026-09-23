@@ -396,6 +396,20 @@ final class OverviewRenderTests: XCTestCase {
         )
     }
 
+    /// The band's strength is a setting, and it has to reach the canvas: at full
+    /// strength the band is the Treatment red itself, at the floor it is a tint too
+    /// faint to count as red, so only the rail is left.
+    func testTheBandOpacitySettingReachesThePlate() throws {
+        let saved = Preferences.shared.activeBandOpacity
+        defer { Preferences.shared.activeBandOpacity = saved }
+
+        Preferences.shared.activeBandOpacity = 1
+        let solid = try redPixels(editor(mode: .allFactors))
+        Preferences.shared.activeBandOpacity = 0.1
+        let faint = try redPixels(editor(mode: .allFactors))
+        XCTAssertGreaterThan(solid, faint * 3, "\(solid) vs \(faint): the setting did not reach the band")
+    }
+
     /// How many pixels of the one well carry the Treatment red — its rail, and in All
     /// factors the band behind the line as well.
     private func redPixels(_ editor: PlateEditor) throws -> Int {

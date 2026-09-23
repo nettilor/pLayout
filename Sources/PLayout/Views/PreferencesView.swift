@@ -37,7 +37,7 @@ struct PreferencesView: View {
                 section("Preview") {
                     WellPreview(
                         textStyle: preferences.wellTextStyle,
-                        markerStyle: preferences.activeMarkerStyle,
+                        bandOpacity: preferences.activeBandOpacity,
                         customEmpty: preferences.customEmptyWellColor,
                         labelFont: preferences.canvasFont(
                             ofSize: 11 * CGFloat(preferences.canvasFontScale), weight: .semibold
@@ -67,6 +67,20 @@ struct PreferencesView: View {
             section("Factor being painted") {
                 choice("Active marker", selection: $preferences.activeMarkerStyle)
                 note(preferences.activeMarkerStyle.note)
+                HStack(spacing: 10) {
+                    Text("Band opacity")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Slider(
+                        value: $preferences.activeBandOpacity,
+                        in: Preferences.activeBandOpacityRange, step: 0.05
+                    )
+                    Text("\(Int((preferences.activeBandOpacity * 100).rounded())) %")
+                        .font(.callout.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, alignment: .trailing)
+                }
+                note("How strongly the band behind the active factor's line, in All, is tinted with its value's colour. At full strength the block merges with its band.")
             }
             section("New documents") {
                 choice("Well shape", selection: $preferences.newDocumentWellShape)
@@ -330,10 +344,12 @@ private struct BlockOutlinePreview: View {
 }
 
 /// A row of wells in the palette's own colours, from its lightest to its darkest, each
-/// drawn the way the plate draws the active factor's line: marker then label.
+/// drawn the way All factors draws the active line: the neutral tile, the band tinted
+/// with the condition's colour, its block, then the label. The last well is Overview's
+/// — the same line with no band, since nothing is being painted there.
 private struct WellPreview: View {
     let textStyle: WellTextStyle
-    let markerStyle: ActiveMarkerStyle
+    let bandOpacity: Double
     let customEmpty: NSColor?
     let labelFont: NSFont
 
@@ -344,44 +360,51 @@ private struct WellPreview: View {
         ("#5889BC", "High"),
     ]
 
+    /// Overview's neutral tile has no colour of its own to contrast against, so it
+    /// follows the ink rather than the other way round.
+    private var tile: NSColor {
+        customEmpty ?? (textStyle.prefersDarkNeutral
+            ? NSColor(white: 0.32, alpha: 1)
+            : NSColor.quaternaryLabelColor.withAlphaComponent(0.18))
+    }
+
+    private var ink: NSColor {
+        customEmpty.map { $0.labelInk(textStyle) } ?? textStyle.neutralInk
+    }
+
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             ForEach(Self.samples, id: \.hex) { sample in
-                let colour = NSColor(hex: sample.hex) ?? .gray
-                well(
-                    fill: colour,
-                    marker: markerStyle == .deeperShade ? colour.contrastingShade : colour.labelInk(textStyle),
-                    ink: colour.labelInk(textStyle),
-                    name: sample.name
-                )
+                well(colour: NSColor(hex: sample.hex) ?? .gray, band: true, name: sample.name)
             }
-            // Overview's neutral tile has no colour of its own to contrast against, so
-            // it follows the ink rather than the other way round.
-            well(
-                fill: customEmpty ?? (textStyle.prefersDarkNeutral
-                    ? NSColor(white: 0.32, alpha: 1)
-                    : NSColor.quaternaryLabelColor.withAlphaComponent(0.18)),
-                marker: nil,
-                ink: customEmpty.map { $0.labelInk(textStyle) } ?? textStyle.neutralInk,
-                name: "Overview"
-            )
+            well(colour: NSColor(hex: Self.samples[3].hex) ?? .gray, band: false, name: "Overview")
         }
     }
 
-    private func well(fill: NSColor, marker: NSColor?, ink: NSColor, name: String) -> some View {
+    private func well(colour: NSColor, band: Bool, name: String) -> some View {
         HStack(spacing: 4) {
-            Capsule()
-                .fill(Color(nsColor: marker ?? .clear))
-                .frame(width: 6, height: 13)
+            RoundedRectangle(cornerRadius: 2)
+                .fill(Color(nsColor: colour))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 2)
+                        .strokeBorder(Color(nsColor: ink.withAlphaComponent(band ? 1 : 0.7)), lineWidth: band ? 1 : 0.75)
+                )
+                .frame(width: 9, height: 12)
             Text(name)
                 .font(Font(labelFont))
                 .lineLimit(1)
                 .foregroundStyle(Color(nsColor: ink))
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 5)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 3)
+        .padding(.vertical, 3)
+        .background(
+            RoundedRectangle(cornerRadius: 3)
+                .fill(Color(nsColor: band ? colour.withAlphaComponent(bandOpacity) : .clear))
+        )
+        .padding(.horizontal, 2)
+        .padding(.vertical, 6)
         .frame(maxWidth: .infinity)
-        .background(RoundedRectangle(cornerRadius: 5).fill(Color(nsColor: fill)))
+        .background(RoundedRectangle(cornerRadius: 5).fill(Color(nsColor: tile)))
     }
 }

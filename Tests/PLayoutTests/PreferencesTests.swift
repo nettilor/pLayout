@@ -371,6 +371,25 @@ final class PreferencesTests: XCTestCase {
         XCTAssertEqual(Preferences(defaults: defaults).groupOutlineThickness, 4, "clamped on load")
     }
 
+    /// The tint behind the active line is an alpha, so the store is clamped to one
+    /// on the way in — a stray 5.0 would otherwise be a solid band with no way back.
+    func testActiveBandOpacityRemembersClampsAndResets() {
+        let preferences = Preferences(defaults: defaults)
+        XCTAssertEqual(preferences.activeBandOpacity, 0.42)
+
+        preferences.activeBandOpacity = 0.7
+        XCTAssertEqual(Preferences(defaults: defaults).activeBandOpacity, 0.7)
+
+        defaults.set(5.0, forKey: "activeBandOpacity")
+        XCTAssertEqual(Preferences(defaults: defaults).activeBandOpacity, 1, "clamped on load")
+        defaults.set(0.0, forKey: "activeBandOpacity")
+        XCTAssertEqual(Preferences(defaults: defaults).activeBandOpacity, 0.1, "never fully off")
+
+        preferences.resetToDefaults()
+        XCTAssertEqual(preferences.activeBandOpacity, 0.42)
+        XCTAssertEqual(Preferences(defaults: defaults).activeBandOpacity, 0.42)
+    }
+
     // MARK: - Plate text
 
     func testPlateFontRemembersClampsAndResets() {
