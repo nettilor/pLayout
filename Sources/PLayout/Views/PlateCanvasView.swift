@@ -391,7 +391,16 @@ final class PlateCanvasView: NSView, NSUserInterfaceValidations {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard let window else { return }
-        if editor?.undoManager == nil { editor?.undoManager = window.undoManager }
+        // The window's undo manager is the one ⌘Z and Edit ▸ Undo reach, through the
+        // responder chain — and it wins over whatever the editor was handed earlier.
+        // On macOS 27 the SwiftUI environment gives `ContentView` a *different*
+        // NSUndoManager for a restored or second document window, and its `onAppear`
+        // runs before this view is in the window; taking the environment's when the
+        // slot was empty meant every edit was registered where nothing could undo it.
+        // Traced in the running app, not guessed (HANDOFF §2z).
+        if let undoManager = window.undoManager, undoManager !== editor?.undoManager {
+            editor?.undoManager = undoManager
+        }
         DispatchQueue.main.async { [weak self] in
             guard let self, self.isEditable else { return }
             guard self.window?.firstResponder is NSWindow || self.window?.firstResponder == nil else { return }

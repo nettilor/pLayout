@@ -59,6 +59,10 @@ struct ContentView: View {
             CustomFormatSheet(editor: editor)
         }
         .onAppear {
+            // A fallback for a document with no canvas in a window yet. The canvas
+            // replaces it with its window's undo manager the moment it has one: on
+            // macOS 27 the two are different objects, and only the window's is the one
+            // ⌘Z reaches (see `PlateCanvasView.viewDidMoveToWindow`).
             if editor.undoManager == nil { editor.undoManager = undoManager }
         }
     }

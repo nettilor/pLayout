@@ -319,6 +319,37 @@ final class EditorTests: XCTestCase {
         XCTAssertEqual(document.layout.plates[0].assignedWellCount(factor: factor.id, level: factor.levels[1].id), 4)
     }
 
+    /// ⌘Z and Edit ▸ Undo resolve through the responder chain to the *window's* undo
+    /// manager. On macOS 27 that is not the object SwiftUI's environment hands the
+    /// content view for a restored or second document window, and the environment
+    /// arrives first — so an editor that kept the first manager it was given registered
+    /// every paint where nothing could undo it. The window the plate is drawn in wins.
+    func testTheWindowsUndoManagerWinsOverTheOneTheEditorWasHandedFirst() {
+        let document = PlateDocument()
+        let editor = PlateEditor(document: document)
+        let handedFirst = UndoManager()
+        editor.undoManager = handedFirst
+
+        let frame = NSRect(x: 0, y: 0, width: 600, height: 400)
+        let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        let canvas = PlateCanvasView(frame: frame)
+        canvas.attach(editor: editor)
+        window.contentView = canvas
+        let windows = try! XCTUnwrap(window.undoManager)
+        XCTAssertTrue(editor.undoManager === windows, "the canvas did not adopt its window's undo manager")
+        XCTAssertFalse(editor.undoManager === handedFirst)
+
+        let factor = document.layout.factors[0]
+        editor.selection = WellRange(single: WellPos(row: 0, col: 0))
+        editor.armedLevelID = factor.levels[1].id
+        editor.paintSelection()
+        XCTAssertEqual(document.layout.plates[0].assignedWellCount(factor: factor.id, level: factor.levels[1].id), 1)
+        XCTAssertTrue(windows.canUndo, "the paint was registered somewhere ⌘Z cannot reach")
+        XCTAssertFalse(handedFirst.canUndo)
+        windows.undo()
+        XCTAssertEqual(document.layout.plates[0].assignedWellCount(factor: factor.id, level: factor.levels[1].id), 0)
+    }
+
     func testPasteCreatesMissingConditions() {
         let document = PlateDocument()
         let editor = PlateEditor(document: document)
