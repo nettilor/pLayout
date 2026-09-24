@@ -346,7 +346,9 @@ It travels between documents. Factors and conditions are matched **by name**, an
 anything the receiving document has never seen is created — a missing factor with its
 unit and type, a missing condition in the colour it wore where it was copied from. A
 well that was blank in the copy pastes as blank, because a blank is part of a design.
-However much it had to create, the paste is a single `⌘Z`.
+However much it had to create, the paste is a single `⌘Z`. The brush is left as you had
+it: if you pressed Escape to select without painting, a paste does not arm a condition
+behind your back, so a design can be moved around in chunks with nothing but clicks.
 
 `⌘V` notices a block of wells on the clipboard and takes all of it, so the shortcut
 you already use does the right thing with either kind. Excel is not left out: the same

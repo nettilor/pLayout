@@ -150,6 +150,40 @@ final class WellClipboardTests: XCTestCase {
                        "the original block is untouched")
     }
 
+    /// Escape disarms the brush so a click selects without painting, and moving a
+    /// design around in chunks is exactly that: select, copy, select, paste, again.
+    /// A paste that armed the first condition made the next click paint the plate.
+    func testPasteLeavesADisarmedBrushDisarmed() {
+        select(block)
+        editor.copyWells()
+        editor.disarmLevel()
+        XCTAssertNil(editor.armedLevelID)
+
+        select(WellRange(single: WellPos(row: 4, col: 5)))
+        editor.pasteWells()
+        XCTAssertEqual(name(document.layout, factor: "Condition", row: 4, col: 5), "Untreated")
+        XCTAssertNil(editor.armedLevelID, "the paste armed a condition nobody asked for")
+
+        // The plain paste of text values keeps the same promise.
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString("Vehicle\tTreated", forType: .string)
+        editor.pasteFromPasteboard()
+        XCTAssertEqual(name(document.layout, factor: "Condition", row: 4, col: 6), "Treated")
+        XCTAssertNil(editor.armedLevelID)
+    }
+
+    /// The other half of the rule: a brush pointing at a condition the active factor
+    /// no longer has is put back on something real, as it always was.
+    func testPasteStillReplacesAStaleBrush() {
+        select(block)
+        editor.copyWells()
+        editor.armedLevelID = UUID()
+
+        select(WellRange(single: WellPos(row: 4, col: 5)))
+        editor.pasteWells()
+        XCTAssertEqual(editor.armedLevelID, editor.activeFactor?.levels.first?.id)
+    }
+
     // MARK: - Paste, another document
 
     func testPastingIntoAnotherDocumentCreatesWhatItIsMissing() {

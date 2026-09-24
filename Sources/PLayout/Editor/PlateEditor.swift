@@ -1490,10 +1490,14 @@ final class PlateEditor: ObservableObject {
 
         // A pasted block can create the very factor or condition the sidebar is
         // pointing at nothing for, so put the brush somewhere valid before saying so.
+        // Only a brush that has gone *stale* is re-armed. A nil brush is the user's
+        // own doing — Escape, to select without painting — and it has to survive a
+        // paste: moving a design around in chunks is select, copy, select, paste,
+        // and a brush that came back armed made the next click paint the plate.
         if activeFactorID == nil || layout.factor(id: activeFactorID) == nil {
             if let first = layout.factors.first { setActiveFactor(first.id) }
         }
-        if armedLevelID.flatMap({ activeFactor?.level(id: $0) }) == nil {
+        if let armed = armedLevelID, activeFactor?.level(id: armed) == nil {
             armedLevelID = activeFactor?.levels.first?.id
         }
 
@@ -1575,7 +1579,8 @@ final class PlateEditor: ObservableObject {
         }
 
         if created > 0 { flash("Added \(created) new condition\(created == 1 ? "" : "s") from pasted values.") }
-        if armedLevelID.flatMap({ activeFactor?.level(id: $0) }) == nil {
+        // Same rule as `pasteWells`: a stale brush is re-armed, a disarmed one is left.
+        if let armed = armedLevelID, activeFactor?.level(id: armed) == nil {
             armedLevelID = activeFactor?.levels.first?.id
         }
     }
